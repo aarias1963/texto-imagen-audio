@@ -310,25 +310,30 @@ def process_flux_response(response, api_key):
         return "Timeout: La generación tomó demasiado tiempo."
 
 # Función principal para generar imagen con Flux
-def generate_image_flux(text_content: str, api_key: str, model: str, width: int, height: int, steps: int) -> Optional[Image.Image]:
+def generate_image_flux(text_content: str, api_key: str, model: str, width: int, height: int, steps: int, style: str = "photorealistic", custom_prompt: str = None) -> Optional[Image.Image]:
     """Genera imagen usando Flux (wrapper que usa la implementación funcional)"""
     try:
-        # Extraer elementos clave del texto y crear un prompt más realista
-        content_preview = ' '.join(text_content.split()[:80])  # Primeras 80 palabras
-        
-        # Crear un prompt más descriptivo y realista
-        visual_prompt = f"A realistic scene representing: {content_preview}. Real world setting, natural environment, authentic details"
+        # Determinar qué prompt usar
+        if custom_prompt and custom_prompt.strip():
+            # Usar el prompt personalizado del usuario
+            visual_prompt = custom_prompt.strip()
+            st.info(f"🎨 Usando prompt personalizado para la imagen")
+        else:
+            # Generar prompt automáticamente desde el texto
+            content_preview = ' '.join(text_content.split()[:80])  # Primeras 80 palabras
+            visual_prompt = f"A realistic scene representing: {content_preview}. Real world setting, natural environment, authentic details"
+            st.info(f"🤖 Generando prompt automático desde el contenido")
         
         if model == "flux-pro-1.1-ultra":
             # Usar Ultra con aspect ratio
             aspect_ratio = f"{width}:{height}" if width == height else "16:9"
-            result, optimized_prompt = generate_image_flux_ultra(visual_prompt, aspect_ratio, api_key)
+            result, optimized_prompt = generate_image_flux_ultra(visual_prompt, aspect_ratio, api_key, style)
         else:
             # Usar Pro normal
-            result, optimized_prompt = generate_image_flux_pro(visual_prompt, width, height, steps, api_key)
+            result, optimized_prompt = generate_image_flux_pro(visual_prompt, width, height, steps, api_key, style)
         
-        # Mostrar el prompt optimizado
-        st.info(f"📝 Prompt optimizado para Flux: {optimized_prompt}")
+        # Mostrar el prompt final optimizado
+        st.info(f"📝 Prompt final optimizado para Flux: {optimized_prompt}")
         
         if isinstance(result, Image.Image):
             return result
@@ -403,6 +408,21 @@ with col1:
         ["ejercicio", "artículo", "texto", "relato"],
         help="Selecciona el tipo que mejor se adapte a tu necesidad"
     )
+    
+    # Prompt opcional para imagen
+    st.subheader("🖼️ Personalización de Imagen (Opcional)")
+    image_prompt = st.text_area(
+        "Prompt personalizado para la imagen:",
+        placeholder="""Opcional: Describe específicamente qué imagen quieres generar.
+Si lo dejas vacío, se generará automáticamente basado en el contenido del texto.
+
+Ejemplos:
+• Una persona estudiando con libros de matemáticas en una biblioteca moderna
+• Un paisaje futurista con paneles solares y turbinas eólicas
+• Un gato naranja con sombrero viajando en una máquina del tiempo steampunk""",
+        height=80,
+        help="Si especificas un prompt, este se usará en lugar del generado automáticamente"
+    )
 
 with col2:
     st.header("🚀 Generación")
@@ -468,7 +488,7 @@ if generate_button and user_prompt:
                 
                 generated_image = generate_image_flux(
                     generated_text, bfl_api_key, flux_model,
-                    image_width, image_height, flux_steps
+                    image_width, image_height, flux_steps, image_style, image_prompt
                 )
                 
                 if generated_image:
@@ -484,6 +504,8 @@ if generate_button and user_prompt:
                         'height': image_height,
                         'model': flux_model,
                         'steps': flux_steps,
+                        'style': image_style,
+                        'custom_prompt': bool(image_prompt and image_prompt.strip()),
                         'timestamp': int(time.time())
                     }
                 
@@ -563,11 +585,23 @@ if st.session_state.generation_complete and st.session_state.generated_content:
             width = metadata.get('width', 'N/A')
             height = metadata.get('height', 'N/A')
             model = metadata.get('model', 'N/A')
+            style = metadata.get('style', 'N/A')
+            custom_prompt_used = metadata.get('custom_prompt', False)
+            
+            # Descripción mejorada
+            prompt_info = "Con prompt personalizado" if custom_prompt_used else "Generado automáticamente"
+            caption = f"Generada con {model} • {width}x{height}px • Estilo: {style} • {prompt_info}"
             
             st.image(
                 st.session_state.generated_content['image_obj'], 
-                caption=f"Generada con {model} • {width}x{height}px"
+                caption=caption
             )
+            
+            # Información adicional
+            if custom_prompt_used:
+                st.success("✨ Se utilizó tu prompt personalizado para la imagen")
+            else:
+                st.info("🤖 Se generó automáticamente basándose en el contenido del texto")
             
             # Botón para descargar imagen con key única
             img_timestamp = metadata.get('timestamp', int(time.time()))
@@ -604,7 +638,7 @@ if st.session_state.generation_complete and st.session_state.generated_content:
     
     # Estadísticas finales
     with st.expander("📈 Estadísticas de generación"):
-        col_stats1, col_stats2, col_stats3 = st.columns(3)
+        col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
         
         text_meta = st.session_state.generated_content.get('text_metadata', {})
         image_meta = st.session_state.generated_content.get('image_metadata', {})
@@ -618,6 +652,9 @@ if st.session_state.generation_complete and st.session_state.generated_content:
             st.metric("Resolución imagen", f"{width}x{height}" if width and height else "N/A")
         with col_stats3:
             st.metric("Pasos Flux", image_meta.get('steps', 0))
+        with col_stats4:
+            prompt_type = "Personalizado" if image_meta.get('custom_prompt', False) else "Automático"
+            st.metric("Tipo de prompt", prompt_type)
     
     # Botón para limpiar y empezar de nuevo
     if st.button("🔄 Generar Nuevo Contenido", type="secondary"):
@@ -672,9 +709,10 @@ with tab3:
     - Especifica el tono deseado (formal, casual, técnico, etc.)
     
     **🖼️ Para las imágenes:**
-    - El prompt de imagen se genera automáticamente del texto
-    - Flux Pro 1.1 ofrece la mejor calidad
-    - Imágenes más grandes requieren más tiempo de procesamiento
+    - **Automático**: Se genera basándose en el contenido del texto
+    - **Personalizado**: Describe exactamente qué quieres ver en la imagen
+    - **Estilos disponibles**: Photorealistic, Digital-art, Cinematic, Documentary, Portrait
+    - **Ejemplos de prompts buenos**: "Una profesora explicando matemáticas en un aula moderna con tecnología", "Paneles solares en un campo al atardecer con montañas de fondo"
     
     **🎵 Para el audio:**
     - El texto se limpia automáticamente para TTS
