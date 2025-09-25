@@ -35,7 +35,7 @@ with st.sidebar:
     # Modelo de Claude
     claude_model = st.selectbox(
         "Modelo de Claude",
-        ["claude-3-5-sonnet-20241022", "claude-3-sonnet-20240229"],
+        ["claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219"],
         index=0,
         help="Claude Sonnet 4 es el más reciente y avanzado"
     )
