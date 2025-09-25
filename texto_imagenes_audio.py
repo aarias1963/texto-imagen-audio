@@ -58,6 +58,14 @@ with st.sidebar:
     
     flux_steps = st.slider("Pasos de generación (Flux)", 1, 50, 25, help="Más pasos = mejor calidad pero más tiempo")
     
+    # Estilo de imagen
+    image_style = st.selectbox(
+        "Estilo de imagen",
+        ["photorealistic", "digital-art", "cinematic", "documentary", "portrait"],
+        index=0,
+        help="Estilo visual para la generación de imágenes"
+    )
+    
     # Configuración de audio
     voice_model = st.selectbox(
         "Voz para Audio",
@@ -163,20 +171,31 @@ El {content_type} debe tener la extensión apropiada para su tipo y propósito."
         return None
 
 # Función para optimizar prompt para Flux (basada en el archivo de referencia)
-def optimize_prompt_for_flux(prompt):
-    """Optimiza el prompt para mejor generación de imágenes con Flux"""
+def optimize_prompt_for_flux(prompt, style="photorealistic"):
+    """Optimiza el prompt para mejor generación de imágenes con el estilo seleccionado"""
     try:
-        # Sistema simplificado para optimización de prompts visuales
-        optimized = f"High quality, detailed artwork of: {prompt}. Professional digital art, vibrant colors, sharp focus, masterpiece"
+        # Definir estilos específicos
+        style_prompts = {
+            "photorealistic": "Photorealistic, high-quality photograph of: {prompt}. Professional photography, realistic lighting, sharp focus, detailed textures, natural colors, 8K resolution, masterpiece quality, cinematic composition",
+            "digital-art": "High-quality digital artwork of: {prompt}. Professional digital art, vibrant colors, sharp focus, detailed illustration, artistic composition, masterpiece",
+            "cinematic": "Cinematic scene of: {prompt}. Movie-like composition, dramatic lighting, professional cinematography, high production value, detailed scene, 8K quality",
+            "documentary": "Documentary-style photograph of: {prompt}. Authentic, candid photography, natural lighting, real-world setting, journalistic quality, unposed, realistic",
+            "portrait": "Professional portrait of: {prompt}. Studio lighting, sharp focus, detailed features, high-quality photography, professional composition, realistic skin tones"
+        }
+        
+        # Usar el estilo seleccionado o el por defecto
+        template = style_prompts.get(style, style_prompts["photorealistic"])
+        optimized = template.format(prompt=prompt)
+        
         return optimized
     except Exception as e:
         st.error(f"Error optimizando prompt: {str(e)}")
         return prompt
 
 # Función para generar imagen con Flux Pro (basada en el archivo de referencia)
-def generate_image_flux_pro(prompt, width, height, steps, api_key):
+def generate_image_flux_pro(prompt, width, height, steps, api_key, style="photorealistic"):
     """Genera imagen usando Flux Pro 1.1 (basado en implementación funcional)"""
-    optimized_prompt = optimize_prompt_for_flux(prompt)
+    optimized_prompt = optimize_prompt_for_flux(prompt, style)
     
     headers = {
         'accept': 'application/json',
@@ -206,9 +225,9 @@ def generate_image_flux_pro(prompt, width, height, steps, api_key):
     return process_flux_response(response, api_key), optimized_prompt
 
 # Función para generar imagen con Flux Ultra (basada en el archivo de referencia)  
-def generate_image_flux_ultra(prompt, aspect_ratio, api_key):
+def generate_image_flux_ultra(prompt, aspect_ratio, api_key, style="photorealistic"):
     """Genera imagen usando Flux Pro 1.1 Ultra (basado en implementación funcional)"""
-    optimized_prompt = optimize_prompt_for_flux(prompt)
+    optimized_prompt = optimize_prompt_for_flux(prompt, style)
     
     headers = {
         'accept': 'application/json',
@@ -294,9 +313,11 @@ def process_flux_response(response, api_key):
 def generate_image_flux(text_content: str, api_key: str, model: str, width: int, height: int, steps: int) -> Optional[Image.Image]:
     """Genera imagen usando Flux (wrapper que usa la implementación funcional)"""
     try:
-        # Extraer elementos clave del texto para el prompt visual
-        content_preview = ' '.join(text_content.split()[:100])  # Primeras 100 palabras
-        visual_prompt = f"Visual representation of: {content_preview}"
+        # Extraer elementos clave del texto y crear un prompt más realista
+        content_preview = ' '.join(text_content.split()[:80])  # Primeras 80 palabras
+        
+        # Crear un prompt más descriptivo y realista
+        visual_prompt = f"A realistic scene representing: {content_preview}. Real world setting, natural environment, authentic details"
         
         if model == "flux-pro-1.1-ultra":
             # Usar Ultra con aspect ratio
