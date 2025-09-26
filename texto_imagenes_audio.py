@@ -4,6 +4,7 @@ import base64
 import io
 import time
 from PIL import Image
+from io import BytesIO
 import json
 import os
 from typing import Optional, Dict, Any
@@ -14,6 +15,13 @@ st.set_page_config(
     page_icon="🎨",
     layout="wide"
 )
+
+# Inicializar session state para mantener resultados
+if 'generated_content' not in st.session_state:
+    st.session_state.generated_content = {}
+
+if 'generation_complete' not in st.session_state:
+    st.session_state.generation_complete = False
 
 # Título principal
 st.title("🎨 Generador de Contenido Multimedia")
@@ -35,7 +43,7 @@ with st.sidebar:
     # Modelo de Claude
     claude_model = st.selectbox(
         "Modelo de Claude",
-        ["claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219"],
+        ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022"],
         index=0,
         help="Claude Sonnet 4 es el más reciente y avanzado"
     )
@@ -43,12 +51,20 @@ with st.sidebar:
     # Configuración de Flux
     flux_model = st.selectbox(
         "Modelo de Flux",
-        ["flux-pro-1.1", "flux-pro", "flux-dev"],
+        ["flux-pro-1.1", "flux-pro-1.1-ultra"],
         index=0,
-        help="Flux Pro 1.1 es la versión más avanzada"
+        help="Pro 1.1 permite control de dimensiones, Ultra es para máxima calidad"
     )
     
     flux_steps = st.slider("Pasos de generación (Flux)", 1, 50, 25, help="Más pasos = mejor calidad pero más tiempo")
+    
+    # Estilo de imagen
+    image_style = st.selectbox(
+        "Estilo de imagen",
+        ["photorealistic", "digital-art", "cinematic", "documentary", "portrait"],
+        index=0,
+        help="Estilo visual para la generación de imágenes"
+    )
     
     # Configuración de audio
     voice_model = st.selectbox(
@@ -60,8 +76,15 @@ with st.sidebar:
     # Configuraciones adicionales
     st.subheader("Configuraciones Avanzadas")
     max_tokens_claude = st.number_input("Max tokens Claude", 500, 4000, 2000)
-    image_width = st.selectbox("Ancho de imagen", [512, 768, 1024, 1344], index=2)
-    image_height = st.selectbox("Alto de imagen", [512, 768, 1024, 1344], index=2)
+    
+    # Configuraciones específicas según modelo de Flux
+    if flux_model == "flux-pro-1.1":
+        image_width = st.selectbox("Ancho de imagen", [512, 768, 1024, 1344], index=2)
+        image_height = st.selectbox("Alto de imagen", [512, 768, 1024, 1344], index=2)
+    else:  # Ultra
+        st.info("💡 Flux Ultra maneja las dimensiones automáticamente")
+        image_width = 1024  # Valor por defecto para Ultra
+        image_height = 1024
 
 # Función para generar texto con Claude Sonnet 4
 def generate_text_claude(prompt: str, content_type: str, api_key: str, model: str, max_tokens: int) -> Optional[str]:
@@ -147,117 +170,181 @@ El {content_type} debe tener la extensión apropiada para su tipo y propósito."
         st.error(f"Error en la generación de texto con Claude: {str(e)}")
         return None
 
-# Función para generar prompt de imagen optimizado para Flux
-def create_image_prompt(text_content: str) -> str:
-    """Crea un prompt optimizado para Flux basado en el contenido del texto"""
-    # Extraer elementos clave del texto para crear un prompt visual efectivo
-    content_preview = text_content[:800]  # Usar más contexto para mejor comprensión
-    
-    # Prompt base optimizado para Flux
-    base_prompt = f"Create a high-quality, detailed visual representation of the following content: {content_preview}."
-    
-    # Agregar especificaciones técnicas para Flux
-    technical_specs = " Professional photography style, sharp focus, vibrant colors, excellent composition, 8K resolution, masterpiece quality."
-    
-    return base_prompt + technical_specs
-
-# Función para generar imagen con Flux
-def generate_image_flux(text_content: str, api_key: str, model: str, width: int, height: int, steps: int) -> Optional[Image.Image]:
-    """Genera imagen usando Flux de Black Forest Labs"""
+# Función para optimizar prompt para Flux (basada en el archivo de referencia)
+def optimize_prompt_for_flux(prompt, style="photorealistic"):
+    """Optimiza el prompt para mejor generación de imágenes con el estilo seleccionado"""
     try:
-        # Crear prompt optimizado
-        image_prompt = create_image_prompt(text_content)
-        
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
+        # Definir estilos específicos
+        style_prompts = {
+            "photorealistic": "Photorealistic, high-quality photograph of: {prompt}. Professional photography, realistic lighting, sharp focus, detailed textures, natural colors, 8K resolution, masterpiece quality, cinematic composition",
+            "digital-art": "High-quality digital artwork of: {prompt}. Professional digital art, vibrant colors, sharp focus, detailed illustration, artistic composition, masterpiece",
+            "cinematic": "Cinematic scene of: {prompt}. Movie-like composition, dramatic lighting, professional cinematography, high production value, detailed scene, 8K quality",
+            "documentary": "Documentary-style photograph of: {prompt}. Authentic, candid photography, natural lighting, real-world setting, journalistic quality, unposed, realistic",
+            "portrait": "Professional portrait of: {prompt}. Studio lighting, sharp focus, detailed features, high-quality photography, professional composition, realistic skin tones"
         }
         
-        # Configuración específica para diferentes modelos de Flux
-        data = {
-            "prompt": image_prompt,
-            "width": width,
-            "height": height,
-            "steps": steps,
-            "prompt_upsampling": False,
-            "seed": None,  # Aleatorio
-            "output_format": "png",
-            "safety_tolerance": 2
-        }
+        # Usar el estilo seleccionado o el por defecto
+        template = style_prompts.get(style, style_prompts["photorealistic"])
+        optimized = template.format(prompt=prompt)
         
-        # URL específica según el modelo
-        if model == "flux-pro-1.1":
-            url = "https://api.bfl.ml/v1/flux-pro-1.1"
-        elif model == "flux-pro":
-            url = "https://api.bfl.ml/v1/flux-pro"
-        else:  # flux-dev
-            url = "https://api.bfl.ml/v1/flux-dev"
-        
-        # Hacer la petición
-        response = requests.post(url, headers=headers, json=data, timeout=180)
-        
-        if response.status_code == 200:
-            response_data = response.json()
+        return optimized
+    except Exception as e:
+        st.error(f"Error optimizando prompt: {str(e)}")
+        return prompt
+
+# Función para generar imagen con Flux Pro (basada en el archivo de referencia)
+def generate_image_flux_pro(prompt, width, height, steps, api_key, style="photorealistic"):
+    """Genera imagen usando Flux Pro 1.1 (basado en implementación funcional)"""
+    optimized_prompt = optimize_prompt_for_flux(prompt, style)
+    
+    headers = {
+        'accept': 'application/json',
+        'x-key': api_key,
+        'Content-Type': 'application/json',
+    }
+    
+    json_data = {
+        'prompt': optimized_prompt,
+        'width': int(width),
+        'height': int(height),
+        'steps': int(steps),
+        'prompt_upsampling': False,
+        'seed': 42,  # Seed fijo para consistencia
+        'guidance': 2.5,
+        'safety_tolerance': 2,
+        'interval': 2,
+        'output_format': 'jpeg'
+    }
+    
+    response = requests.post(
+        'https://api.bfl.ml/v1/flux-pro-1.1',
+        headers=headers,
+        json=json_data,
+    )
+    
+    return process_flux_response(response, api_key), optimized_prompt
+
+# Función para generar imagen con Flux Ultra (basada en el archivo de referencia)  
+def generate_image_flux_ultra(prompt, aspect_ratio, api_key, style="photorealistic"):
+    """Genera imagen usando Flux Pro 1.1 Ultra (basado en implementación funcional)"""
+    optimized_prompt = optimize_prompt_for_flux(prompt, style)
+    
+    headers = {
+        'accept': 'application/json',
+        'x-key': api_key,
+        'Content-Type': 'application/json',
+    }
+    
+    json_data = {
+        'prompt': optimized_prompt,
+        'seed': 42,
+        'aspect_ratio': aspect_ratio,
+        'safety_tolerance': 2,
+        'output_format': 'jpeg',
+        'raw': False
+    }
+    
+    response = requests.post(
+        'https://api.bfl.ml/v1/flux-pro-1.1-ultra',
+        headers=headers,
+        json=json_data,
+    )
+    
+    return process_flux_response(response, api_key), optimized_prompt
+
+# Función para procesar respuesta de Flux (basada en el archivo de referencia)
+def process_flux_response(response, api_key):
+    """Procesa la respuesta de Flux y hace polling hasta obtener la imagen"""
+    if response.status_code != 200:
+        return f"Error: {response.status_code} {response.text}"
+    
+    request = response.json()
+    request_id = request.get("id")
+    if not request_id:
+        return "No se pudo obtener el ID de la solicitud."
+
+    with st.spinner('Generando imagen con Flux...'):
+        max_attempts = 60  # 5 minutos máximo
+        for attempt in range(max_attempts):
+            time.sleep(5)  # Esperar 5 segundos entre consultas
             
-            # Flux devuelve un ID de tarea, necesitamos hacer polling
-            task_id = response_data.get("id")
-            if task_id:
-                return poll_flux_result(task_id, api_key)
+            result_response = requests.get(
+                'https://api.bfl.ml/v1/get_result',
+                headers={
+                    'accept': 'application/json',
+                    'x-key': api_key,
+                },
+                params={
+                    'id': request_id,
+                },
+            )
+            
+            if result_response.status_code != 200:
+                return f"Error: {result_response.status_code} {result_response.text}"
+            
+            result = result_response.json()
+            status = result.get("status")
+            
+            if status == "Ready":
+                image_url = result['result'].get('sample')
+                if not image_url:
+                    return "No se encontró URL de imagen en el resultado."
+                
+                image_response = requests.get(image_url)
+                if image_response.status_code != 200:
+                    return f"Error al obtener la imagen: {image_response.status_code}"
+                
+                image = Image.open(BytesIO(image_response.content))
+                jpg_image = image.convert("RGB")
+                return jpg_image
+                
+            elif status == "Failed":
+                return "La generación de la imagen falló."
+            elif status == "Pending":
+                # Mostrar progreso
+                st.info(f"Procesando... Intento {attempt + 1}/{max_attempts}")
+                pass
             else:
-                st.error("No se recibió ID de tarea de Flux")
-                return None
+                return f"Estado inesperado: {status}"
+        
+        return "Timeout: La generación tomó demasiado tiempo."
+
+# Función principal para generar imagen con Flux
+def generate_image_flux(text_content: str, api_key: str, model: str, width: int, height: int, steps: int, style: str = "photorealistic", custom_prompt: str = None) -> Optional[Image.Image]:
+    """Genera imagen usando Flux (wrapper que usa la implementación funcional)"""
+    try:
+        # Determinar qué prompt usar
+        if custom_prompt and custom_prompt.strip():
+            # Usar el prompt personalizado del usuario
+            visual_prompt = custom_prompt.strip()
+            st.info(f"🎨 Usando prompt personalizado para la imagen")
         else:
-            st.error(f"Error iniciando generación con Flux: {response.status_code} - {response.text}")
+            # Generar prompt automáticamente desde el texto
+            content_preview = ' '.join(text_content.split()[:80])  # Primeras 80 palabras
+            visual_prompt = f"A realistic scene representing: {content_preview}. Real world setting, natural environment, authentic details"
+            st.info(f"🤖 Generando prompt automático desde el contenido")
+        
+        if model == "flux-pro-1.1-ultra":
+            # Usar Ultra con aspect ratio
+            aspect_ratio = f"{width}:{height}" if width == height else "16:9"
+            result, optimized_prompt = generate_image_flux_ultra(visual_prompt, aspect_ratio, api_key, style)
+        else:
+            # Usar Pro normal
+            result, optimized_prompt = generate_image_flux_pro(visual_prompt, width, height, steps, api_key, style)
+        
+        # Mostrar el prompt final optimizado
+        st.info(f"📝 Prompt final optimizado para Flux: {optimized_prompt}")
+        
+        if isinstance(result, Image.Image):
+            return result
+        else:
+            st.error(f"Error en Flux: {result}")
             return None
             
     except Exception as e:
         st.error(f"Error en la generación de imagen con Flux: {str(e)}")
-        return None
-
-# Función para hacer polling del resultado de Flux
-def poll_flux_result(task_id: str, api_key: str) -> Optional[Image.Image]:
-    """Hace polling para obtener el resultado de la generación de Flux"""
-    try:
-        headers = {
-            "Authorization": f"Bearer {api_key}"
-        }
-        
-        # Polling hasta obtener el resultado
-        max_attempts = 60  # 5 minutos máximo
-        for attempt in range(max_attempts):
-            response = requests.get(
-                f"https://api.bfl.ml/v1/get_result?id={task_id}",
-                headers=headers,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                
-                if result.get("status") == "Ready":
-                    # Obtener la imagen
-                    image_url = result.get("result", {}).get("sample")
-                    if image_url:
-                        img_response = requests.get(image_url, timeout=60)
-                        if img_response.status_code == 200:
-                            return Image.open(io.BytesIO(img_response.content))
-                    
-                elif result.get("status") in ["Error", "Request Moderated"]:
-                    st.error(f"Error en Flux: {result.get('status')}")
-                    return None
-                
-                # Si aún está procesando, esperar
-                time.sleep(5)
-                
-            else:
-                st.error(f"Error consultando resultado de Flux: {response.status_code}")
-                return None
-        
-        st.error("Timeout esperando resultado de Flux")
-        return None
-        
-    except Exception as e:
-        st.error(f"Error en polling de Flux: {str(e)}")
+        import traceback
+        st.error(f"Traceback: {traceback.format_exc()}")
         return None
 
 # Función para generar audio con OpenAI TTS (mantenemos la misma)
@@ -321,6 +408,21 @@ with col1:
         ["ejercicio", "artículo", "texto", "relato"],
         help="Selecciona el tipo que mejor se adapte a tu necesidad"
     )
+    
+    # Prompt opcional para imagen
+    st.subheader("🖼️ Personalización de Imagen (Opcional)")
+    image_prompt = st.text_area(
+        "Prompt personalizado para la imagen:",
+        placeholder="""Opcional: Describe específicamente qué imagen quieres generar.
+Si lo dejas vacío, se generará automáticamente basado en el contenido del texto.
+
+Ejemplos:
+• Una persona estudiando con libros de matemáticas en una biblioteca moderna
+• Un paisaje futurista con paneles solares y turbinas eólicas
+• Un gato naranja con sombrero viajando en una máquina del tiempo steampunk""",
+        height=80,
+        help="Si especificas un prompt, este se usará en lugar del generado automáticamente"
+    )
 
 with col2:
     st.header("🚀 Generación")
@@ -350,14 +452,13 @@ if generate_button and user_prompt:
     if not apis_ready:
         st.error("❌ Por favor, proporciona todas las claves de API necesarias.")
     else:
+        # Limpiar contenido anterior
+        st.session_state.generated_content = {}
+        st.session_state.generation_complete = False
+        
         # Progress bar mejorada
         progress_bar = st.progress(0)
         status_text = st.empty()
-        
-        # Contenedores para resultados
-        text_container = st.container()
-        image_container = st.container()
-        audio_container = st.container()
         
         try:
             # Paso 1: Generar texto con Claude Sonnet 4
@@ -370,22 +471,14 @@ if generate_button and user_prompt:
             )
             
             if generated_text:
-                with text_container:
-                    st.header("📄 Contenido Generado por Claude")
-                    st.markdown(generated_text)
-                    
-                    # Métricas del texto
-                    word_count = len(generated_text.split())
-                    char_count = len(generated_text)
-                    st.caption(f"📊 {word_count} palabras • {char_count} caracteres")
-                    
-                    # Botón para descargar texto
-                    st.download_button(
-                        label="📥 Descargar Texto",
-                        data=generated_text,
-                        file_name=f"{content_type}_claude_{int(time.time())}.txt",
-                        mime="text/plain"
-                    )
+                # Guardar en session state
+                st.session_state.generated_content['text'] = generated_text
+                st.session_state.generated_content['text_metadata'] = {
+                    'word_count': len(generated_text.split()),
+                    'char_count': len(generated_text),
+                    'content_type': content_type,
+                    'timestamp': int(time.time())
+                }
                 
                 progress_bar.progress(40)
                 
@@ -395,25 +488,26 @@ if generate_button and user_prompt:
                 
                 generated_image = generate_image_flux(
                     generated_text, bfl_api_key, flux_model,
-                    image_width, image_height, flux_steps
+                    image_width, image_height, flux_steps, image_style, image_prompt
                 )
                 
                 if generated_image:
-                    with image_container:
-                        st.header("🖼️ Imagen Generada por Flux")
-                        st.image(generated_image, caption=f"Generada con {flux_model} • {image_width}x{image_height}px")
-                        
-                        # Convertir imagen a bytes para descarga
-                        img_buffer = io.BytesIO()
-                        generated_image.save(img_buffer, format="PNG", quality=95)
-                        img_bytes = img_buffer.getvalue()
-                        
-                        st.download_button(
-                            label="📥 Descargar Imagen",
-                            data=img_bytes,
-                            file_name=f"flux_image_{int(time.time())}.png",
-                            mime="image/png"
-                        )
+                    # Guardar imagen en session state
+                    img_buffer = io.BytesIO()
+                    generated_image.save(img_buffer, format="PNG", quality=95)
+                    img_bytes = img_buffer.getvalue()
+                    
+                    st.session_state.generated_content['image'] = img_bytes
+                    st.session_state.generated_content['image_obj'] = generated_image
+                    st.session_state.generated_content['image_metadata'] = {
+                        'width': image_width,
+                        'height': image_height,
+                        'model': flux_model,
+                        'steps': flux_steps,
+                        'style': image_style,
+                        'custom_prompt': bool(image_prompt and image_prompt.strip()),
+                        'timestamp': int(time.time())
+                    }
                 
                 progress_bar.progress(70)
                 
@@ -424,37 +518,24 @@ if generate_button and user_prompt:
                 generated_audio = generate_audio(generated_text, voice_model, openai_api_key)
                 
                 if generated_audio:
-                    with audio_container:
-                        st.header("🎵 Audio Generado")
-                        st.audio(generated_audio, format="audio/mp3")
-                        
-                        # Información del audio
-                        audio_size = len(generated_audio) / 1024  # KB
-                        st.caption(f"🎧 Voz: {voice_model} • Tamaño: {audio_size:.1f} KB")
-                        
-                        st.download_button(
-                            label="📥 Descargar Audio",
-                            data=generated_audio,
-                            file_name=f"audio_tts_{int(time.time())}.mp3",
-                            mime="audio/mp3"
-                        )
+                    # Guardar audio en session state
+                    st.session_state.generated_content['audio'] = generated_audio
+                    st.session_state.generated_content['audio_metadata'] = {
+                        'voice': voice_model,
+                        'size_kb': len(generated_audio) / 1024,
+                        'timestamp': int(time.time())
+                    }
+                
+                # Marcar como completado
+                st.session_state.generation_complete = True
                 
                 # Completado
                 progress_bar.progress(100)
                 status_text.text("✅ ¡Contenido multimedia generado exitosamente!")
                 
-                # Resumen final (SIN ANIMACIÓN DE GLOBOS)
+                # Balloons solo una vez
+                st.balloons()
                 st.success("🎉 **¡Generación completada!** Tu contenido multimedia está listo.")
-                
-                # Estadísticas finales
-                with st.expander("📈 Estadísticas de generación"):
-                    col_stats1, col_stats2, col_stats3 = st.columns(3)
-                    with col_stats1:
-                        st.metric("Palabras generadas", word_count)
-                    with col_stats2:
-                        st.metric("Resolución imagen", f"{image_width}x{image_height}")
-                    with col_stats3:
-                        st.metric("Pasos Flux", flux_steps)
                 
             else:
                 st.error("❌ Error al generar el contenido de texto con Claude.")
@@ -463,6 +544,123 @@ if generate_button and user_prompt:
             st.error(f"❌ Error durante la generación: {str(e)}")
             progress_bar.progress(0)
             status_text.text("❌ Generación fallida")
+
+# Mostrar contenido generado desde session state
+if st.session_state.generation_complete and st.session_state.generated_content:
+    # Contenedores para resultados
+    text_container = st.container()
+    image_container = st.container()
+    audio_container = st.container()
+    
+    # Mostrar texto
+    if 'text' in st.session_state.generated_content:
+        with text_container:
+            st.header("📄 Contenido Generado por Claude")
+            st.markdown(st.session_state.generated_content['text'])
+            
+            # Métricas del texto
+            metadata = st.session_state.generated_content.get('text_metadata', {})
+            word_count = metadata.get('word_count', 0)
+            char_count = metadata.get('char_count', 0)
+            content_type = metadata.get('content_type', 'texto')
+            
+            st.caption(f"📊 {word_count} palabras • {char_count} caracteres")
+            
+            # Botón para descargar texto con key única
+            text_timestamp = metadata.get('timestamp', int(time.time()))
+            st.download_button(
+                label="📥 Descargar Texto",
+                data=st.session_state.generated_content['text'],
+                file_name=f"{content_type}_claude_{text_timestamp}.txt",
+                mime="text/plain",
+                key=f"download_text_{text_timestamp}"
+            )
+    
+    # Mostrar imagen
+    if 'image_obj' in st.session_state.generated_content:
+        with image_container:
+            st.header("🖼️ Imagen Generada por Flux")
+            
+            metadata = st.session_state.generated_content.get('image_metadata', {})
+            width = metadata.get('width', 'N/A')
+            height = metadata.get('height', 'N/A')
+            model = metadata.get('model', 'N/A')
+            style = metadata.get('style', 'N/A')
+            custom_prompt_used = metadata.get('custom_prompt', False)
+            
+            # Descripción mejorada
+            prompt_info = "Con prompt personalizado" if custom_prompt_used else "Generado automáticamente"
+            caption = f"Generada con {model} • {width}x{height}px • Estilo: {style} • {prompt_info}"
+            
+            st.image(
+                st.session_state.generated_content['image_obj'], 
+                caption=caption
+            )
+            
+            # Información adicional
+            if custom_prompt_used:
+                st.success("✨ Se utilizó tu prompt personalizado para la imagen")
+            else:
+                st.info("🤖 Se generó automáticamente basándose en el contenido del texto")
+            
+            # Botón para descargar imagen con key única
+            img_timestamp = metadata.get('timestamp', int(time.time()))
+            st.download_button(
+                label="📥 Descargar Imagen",
+                data=st.session_state.generated_content['image'],
+                file_name=f"flux_image_{img_timestamp}.png",
+                mime="image/png",
+                key=f"download_image_{img_timestamp}"
+            )
+    
+    # Mostrar audio
+    if 'audio' in st.session_state.generated_content:
+        with audio_container:
+            st.header("🎵 Audio Generado")
+            st.audio(st.session_state.generated_content['audio'], format="audio/mp3")
+            
+            # Información del audio
+            metadata = st.session_state.generated_content.get('audio_metadata', {})
+            voice = metadata.get('voice', 'N/A')
+            size_kb = metadata.get('size_kb', 0)
+            
+            st.caption(f"🎧 Voz: {voice} • Tamaño: {size_kb:.1f} KB")
+            
+            # Botón para descargar audio con key única
+            audio_timestamp = metadata.get('timestamp', int(time.time()))
+            st.download_button(
+                label="📥 Descargar Audio",
+                data=st.session_state.generated_content['audio'],
+                file_name=f"audio_tts_{audio_timestamp}.mp3",
+                mime="audio/mp3",
+                key=f"download_audio_{audio_timestamp}"
+            )
+    
+    # Estadísticas finales
+    with st.expander("📈 Estadísticas de generación"):
+        col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
+        
+        text_meta = st.session_state.generated_content.get('text_metadata', {})
+        image_meta = st.session_state.generated_content.get('image_metadata', {})
+        audio_meta = st.session_state.generated_content.get('audio_metadata', {})
+        
+        with col_stats1:
+            st.metric("Palabras generadas", text_meta.get('word_count', 0))
+        with col_stats2:
+            width = image_meta.get('width', 0)
+            height = image_meta.get('height', 0)
+            st.metric("Resolución imagen", f"{width}x{height}" if width and height else "N/A")
+        with col_stats3:
+            st.metric("Pasos Flux", image_meta.get('steps', 0))
+        with col_stats4:
+            prompt_type = "Personalizado" if image_meta.get('custom_prompt', False) else "Automático"
+            st.metric("Tipo de prompt", prompt_type)
+    
+    # Botón para limpiar y empezar de nuevo
+    if st.button("🔄 Generar Nuevo Contenido", type="secondary"):
+        st.session_state.generated_content = {}
+        st.session_state.generation_complete = False
+        st.rerun()
 
 # Información adicional en el footer
 st.markdown("---")
@@ -475,7 +673,7 @@ with tab1:
     ### Cómo usar la aplicación:
     
     1. **🔧 Configura las APIs**: Ingresa tus claves en la barra lateral
-    2. **✏️ Escribe tu prompt**: Describe detalladamente qué quieres generar  
+    2. **✍️ Escribe tu prompt**: Describe detalladamente qué quieres generar  
     3. **📋 Selecciona el tipo**: Elige entre ejercicio, artículo, texto o relato
     4. **⚙️ Personaliza**: Ajusta modelos y configuraciones según tus necesidades
     5. **🚀 Genera**: Presiona el botón y espera tu contenido multimedia completo
@@ -511,9 +709,10 @@ with tab3:
     - Especifica el tono deseado (formal, casual, técnico, etc.)
     
     **🖼️ Para las imágenes:**
-    - El prompt de imagen se genera automáticamente del texto
-    - Flux Pro 1.1 ofrece la mejor calidad
-    - Imágenes más grandes requieren más tiempo de procesamiento
+    - **Automático**: Se genera basándose en el contenido del texto
+    - **Personalizado**: Describe exactamente qué quieres ver en la imagen
+    - **Estilos disponibles**: Photorealistic, Digital-art, Cinematic, Documentary, Portrait
+    - **Ejemplos de prompts buenos**: "Una profesora explicando matemáticas en un aula moderna con tecnología", "Paneles solares en un campo al atardecer con montañas de fondo"
     
     **🎵 Para el audio:**
     - El texto se limpia automáticamente para TTS
@@ -525,15 +724,15 @@ with tab4:
     st.markdown("""
     ### Información de los modelos:
     
-    **🧠 Claude Sonnet 4**
-    - Modelo de lenguaje más avanzado de Anthropic
-    - Excelente para razonamiento y escritura creativa
-    - Contexto largo y respuestas de alta calidad
+    **🧠 Claude Sonnet 4 (2025)**
+    - Modelo más avanzado de Anthropic
+    - claude-sonnet-4-20250514: La versión más reciente
+    - Excelente razonamiento, creatividad y contexto largo
     
     **🎨 Flux (Black Forest Labs)**
-    - **Flux Pro 1.1**: La versión más avanzada, mejor calidad
-    - **Flux Pro**: Versión estable y rápida
-    - **Flux Dev**: Para experimentación y desarrollo
+    - **Flux Pro 1.1**: Control total de dimensiones, excelente calidad
+    - **Flux Pro 1.1 Ultra**: Máxima calidad, aspect ratios automáticos
+    - Generación de imágenes de última generación
     
     **🗣️ OpenAI TTS-1-HD**
     - Modelo de alta definición para síntesis de voz
