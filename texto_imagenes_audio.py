@@ -444,7 +444,6 @@ if generate_button and user_prompt:
                 status_text.text("✅ ¡Contenido multimedia generado exitosamente!")
                 
                 # Resumen final
-                st.balloons()
                 st.success("🎉 **¡Generación completada!** Tu contenido multimedia está listo.")
                 
                 # Estadísticas finales
