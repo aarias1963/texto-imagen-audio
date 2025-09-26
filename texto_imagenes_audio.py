@@ -35,7 +35,7 @@ with st.sidebar:
     # Modelo de Claude
     claude_model = st.selectbox(
         "Modelo de Claude",
-        ["claude-3-5-sonnet-20241022", "claude-3-sonnet-20240229"],
+        ["claude-sonnet-4-20250514", "claude-3-7-sonnet-20250219"],
         index=0,
         help="Claude Sonnet 4 es el más reciente y avanzado"
     )
@@ -443,7 +443,7 @@ if generate_button and user_prompt:
                 progress_bar.progress(100)
                 status_text.text("✅ ¡Contenido multimedia generado exitosamente!")
                 
-                # Resumen final
+                # Resumen final (SIN ANIMACIÓN DE GLOBOS)
                 st.success("🎉 **¡Generación completada!** Tu contenido multimedia está listo.")
                 
                 # Estadísticas finales
@@ -475,7 +475,7 @@ with tab1:
     ### Cómo usar la aplicación:
     
     1. **🔧 Configura las APIs**: Ingresa tus claves en la barra lateral
-    2. **✍️ Escribe tu prompt**: Describe detalladamente qué quieres generar  
+    2. **✏️ Escribe tu prompt**: Describe detalladamente qué quieres generar  
     3. **📋 Selecciona el tipo**: Elige entre ejercicio, artículo, texto o relato
     4. **⚙️ Personaliza**: Ajusta modelos y configuraciones según tus necesidades
     5. **🚀 Genera**: Presiona el botón y espera tu contenido multimedia completo
