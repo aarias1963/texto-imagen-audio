@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any
 # Configuración de la página
 st.set_page_config(
     page_title="Generador de Contenido Multimedia - Claude & Flux",
-    page_icon="📄",
+    page_icon="🎨",
     layout="wide"
 )
 
@@ -24,7 +24,7 @@ if 'generation_complete' not in st.session_state:
     st.session_state.generation_complete = False
 
 # Título principal
-st.title("📄 Generador de Contenido Multimedia")
+st.title("🎨 Generador de Contenido Multimedia")
 st.markdown("*Powered by Claude Sonnet 4 & Flux - Transforma tus ideas en texto, imágenes y audio*")
 
 # Sidebar para configuración
@@ -91,15 +91,14 @@ with st.sidebar:
         # Configuración adicional para ElevenLabs
         elevenlabs_model = st.selectbox(
             "Modelo ElevenLabs",
-            ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_turbo_v2", "eleven_monolingual_v1"],
+            ["eleven_turbo_v2_5", "eleven_turbo_v2", "eleven_monolingual_v1"],
             format_func=lambda x: {
-                "eleven_multilingual_v2": "🎯 Multilingual v2 (Recomendado oficial)",
-                "eleven_turbo_v2_5": "⚡ Turbo v2.5 (Más rápido)",
-                "eleven_turbo_v2": "🚀 Turbo v2 (Equilibrado)",
-                "eleven_monolingual_v1": "📊 v1 Monolingual (Legado)"
+                "eleven_turbo_v2_5": "🚀 Turbo v2.5 (Más rápido y mejor calidad)",
+                "eleven_turbo_v2": "⚡ Turbo v2 (Equilibrio velocidad/calidad)",
+                "eleven_monolingual_v1": "🐌 v1 Monolingual (Modelo antiguo)"
             }[x],
             index=0,
-            help="Multilingual v2 es el modelo oficial recomendado por ElevenLabs"
+            help="v2.5 es el más reciente y mejor"
         )
     else:  # ElevenLabs
         voice_model = st.selectbox(
@@ -455,17 +454,14 @@ def generate_audio_elevenlabs(text: str, voice_id: str, api_key: str, model_id: 
             st.success(f"✅ Audio generado exitosamente con {model_id}")
             return response.content
         else:
-            st.error(f"❌ Error generando audio con ElevenLabs: {response.status_code}")
+            st.error(f"Error generando audio con ElevenLabs: {response.status_code}")
             try:
                 error_data = response.json()
                 st.error(f"Detalles del error: {error_data}")
                 
                 # Sugerir alternativas si el modelo no está disponible
-                if response.status_code == 422:
-                    if 'multilingual_v2' in model_id:
-                        st.warning("💡 Prueba con 'eleven_turbo_v2' si tu cuenta no tiene acceso a Multilingual v2")
-                    elif 'turbo_v2' in model_id:
-                        st.warning("💡 Prueba con 'eleven_monolingual_v1' si tu cuenta no tiene acceso a v2")
+                if response.status_code == 422 and 'turbo_v2' in model_id:
+                    st.warning("💡 Prueba con 'eleven_monolingual_v1' si tu cuenta no tiene acceso a v2")
                     
             except:
                 st.error(f"Error text: {response.text}")
@@ -519,7 +515,7 @@ with col1:
     
     # Input del usuario con ejemplos
     user_prompt = st.text_area(
-        "💭 Describe tu idea:",
+        "Describe tu idea:",
         placeholder="""Ejemplos:
 • Un tutorial sobre machine learning para principiantes
 • Un artículo sobre el futuro de la energía renovable  
@@ -530,7 +526,7 @@ with col1:
     
     # Tipo de contenido
     content_type = st.selectbox(
-        "📋 Tipo de contenido a generar:",
+        "Tipo de contenido a generar:",
         ["ejercicio", "artículo", "texto", "relato"],
         help="Selecciona el tipo que mejor se adapte a tu necesidad"
     )
@@ -538,7 +534,7 @@ with col1:
     # Prompt opcional para imagen
     st.subheader("🖼️ Personalización de Imagen (Opcional)")
     image_prompt = st.text_area(
-        "🎨 Prompt personalizado para la imagen:",
+        "Prompt personalizado para la imagen:",
         placeholder="""Opcional: Describe específicamente qué imagen quieres generar.
 Si lo dejas vacío, se generará automáticamente basado en el contenido del texto.
 
@@ -551,14 +547,14 @@ Ejemplos:
     )
 
 with col2:
-    st.header("⚡ Generación")
+    st.header("🚀 Generación")
     
     # Información del modelo
-    st.info(f"🧠 **Claude**: {claude_model}\n\n🎨 **Flux**: {flux_model}\n\n🎤 **Voz**: {voice_model}")
+    st.info(f"🧠 **Claude**: {claude_model}\n\n🎨 **Flux**: {flux_model}\n\n🗣️ **Voz**: {voice_model}")
     
     # Botón principal
     generate_button = st.button(
-        "▶️ Generar Contenido Multimedia",
+        "🎯 Generar Contenido Multimedia",
         type="primary",
         use_container_width=True
     )
@@ -595,7 +591,7 @@ if generate_button and user_prompt:
         
         try:
             # Paso 1: Generar texto con Claude Sonnet 4
-            status_text.text("📝 Generando contenido con Claude Sonnet 4...")
+            status_text.text("🧠 Generando contenido con Claude Sonnet 4...")
             progress_bar.progress(20)
             
             generated_text = generate_text_claude(
@@ -616,7 +612,7 @@ if generate_button and user_prompt:
                 progress_bar.progress(40)
                 
                 # Paso 2: Generar imagen con Flux
-                status_text.text("🖼️ Generando imagen con Flux (esto puede tomar unos minutos)...")
+                status_text.text("🎨 Generando imagen con Flux (esto puede tomar unos minutos)...")
                 progress_bar.progress(50)
                 
                 generated_image = generate_image_flux(
@@ -624,7 +620,6 @@ if generate_button and user_prompt:
                     image_width, image_height, flux_steps, image_style, image_prompt
                 )
                 
-                
                 if generated_image:
                     # Guardar imagen en session state
                     img_buffer = io.BytesIO()
@@ -646,7 +641,7 @@ if generate_button and user_prompt:
                 progress_bar.progress(70)
                 
                 # Paso 3: Generar audio
-                status_text.text(f"🎤 Generando narración en audio con {audio_provider}...")
+                status_text.text(f"🗣️ Generando narración en audio con {audio_provider}...")
                 progress_bar.progress(80)
                 
                 if audio_provider == "OpenAI TTS":
@@ -667,71 +662,13 @@ if generate_button and user_prompt:
                 # Marcar como completado
                 st.session_state.generation_complete = True
                 
-                # Completado - SIN ANIMACIÓN DE GLOBOS
+                # Completado
                 progress_bar.progress(100)
-                status_text.text("✅ Contenido multimedia generado exitosamente")
+                status_text.text("✅ ¡Contenido multimedia generado exitosamente!")
                 
-                st.success("✅ **Generación completada** - Tu contenido multimedia está listo.")
-                
-            else:
-                st.error("❌ Error al generar el contenido de texto con Claude.")
-                
-        except Exception as e:
-            st.error(f"❌ Error durante la generación: {str(e)}")
-            progress_bar.progress(0)
-            status_text.text("❌ Generación fallida")
-                generated_image = generate_image_flux(
-                    generated_text, bfl_api_key, flux_model,
-                    image_width, image_height, flux_steps, image_style, image_prompt
-                )
-                
-                if generated_image:
-                    # Guardar imagen en session state
-                    img_buffer = io.BytesIO()
-                    generated_image.save(img_buffer, format="PNG", quality=95)
-                    img_bytes = img_buffer.getvalue()
-                    
-                    st.session_state.generated_content['image'] = img_bytes
-                    st.session_state.generated_content['image_obj'] = generated_image
-                    st.session_state.generated_content['image_metadata'] = {
-                        'width': image_width,
-                        'height': image_height,
-                        'model': flux_model,
-                        'steps': flux_steps,
-                        'style': image_style,
-                        'custom_prompt': bool(image_prompt and image_prompt.strip()),
-                        'timestamp': int(time.time())
-                    }
-                
-                progress_bar.progress(70)
-                
-                # Paso 3: Generar audio
-                status_text.text(f"🎤 Generando narración en audio con {audio_provider}...")
-                progress_bar.progress(80)
-                
-                if audio_provider == "OpenAI TTS":
-                    generated_audio = generate_audio(generated_text, voice_model, openai_api_key)
-                else:  # ElevenLabs
-                    generated_audio = generate_audio_elevenlabs(generated_text, voice_model, elevenlabs_api_key, elevenlabs_model)
-                
-                if generated_audio:
-                    # Guardar audio en session state
-                    st.session_state.generated_content['audio'] = generated_audio
-                    st.session_state.generated_content['audio_metadata'] = {
-                        'voice': voice_model,
-                        'provider': audio_provider,
-                        'size_kb': len(generated_audio) / 1024,
-                        'timestamp': int(time.time())
-                    }
-                
-                # Marcar como completado
-                st.session_state.generation_complete = True
-                
-                # Completado - SIN ANIMACIÓN DE GLOBOS
-                progress_bar.progress(100)
-                status_text.text("✅ Contenido multimedia generado exitosamente")
-                
-                st.success("✅ **Generación completada** - Tu contenido multimedia está listo.")
+                # Balloons solo una vez
+                st.balloons()
+                st.success("🎉 **¡Generación completada!** Tu contenido multimedia está listo.")
                 
             else:
                 st.error("❌ Error al generar el contenido de texto con Claude.")
@@ -765,7 +702,7 @@ if st.session_state.generation_complete and st.session_state.generated_content:
             # Botón para descargar texto con key única
             text_timestamp = metadata.get('timestamp', int(time.time()))
             st.download_button(
-                label="⬇️ Descargar Texto",
+                label="📥 Descargar Texto",
                 data=st.session_state.generated_content['text'],
                 file_name=f"{content_type}_claude_{text_timestamp}.txt",
                 mime="text/plain",
@@ -795,14 +732,14 @@ if st.session_state.generation_complete and st.session_state.generated_content:
             
             # Información adicional
             if custom_prompt_used:
-                st.success("✓ Se utilizó tu prompt personalizado para la imagen")
+                st.success("✨ Se utilizó tu prompt personalizado para la imagen")
             else:
-                st.info("ℹ️ Se generó automáticamente basándose en el contenido del texto")
+                st.info("🤖 Se generó automáticamente basándose en el contenido del texto")
             
             # Botón para descargar imagen con key única
             img_timestamp = metadata.get('timestamp', int(time.time()))
             st.download_button(
-                label="⬇️ Descargar Imagen",
+                label="📥 Descargar Imagen",
                 data=st.session_state.generated_content['image'],
                 file_name=f"flux_image_{img_timestamp}.png",
                 mime="image/png",
@@ -838,12 +775,12 @@ if st.session_state.generation_complete and st.session_state.generated_content:
             else:
                 display_voice = voice
                 
-            st.caption(f"🎤 Voz: {display_voice} • Proveedor: {provider} • Tamaño: {size_kb:.1f} KB")
+            st.caption(f"🎧 Voz: {display_voice} • Proveedor: {provider} • Tamaño: {size_kb:.1f} KB")
             
             # Botón para descargar audio con key única
             audio_timestamp = metadata.get('timestamp', int(time.time()))
             st.download_button(
-                label="⬇️ Descargar Audio",
+                label="📥 Descargar Audio",
                 data=st.session_state.generated_content['audio'],
                 file_name=f"audio_{provider.lower().replace(' ', '_')}_{audio_timestamp}.mp3",
                 mime="audio/mp3",
@@ -880,7 +817,7 @@ if st.session_state.generation_complete and st.session_state.generated_content:
 st.markdown("---")
 
 # Tabs informativas
-tab1, tab2, tab3, tab4 = st.tabs(["📋 Instrucciones", "🔑 APIs", "💡 Consejos", "⚙️ Modelos"])
+tab1, tab2, tab3, tab4 = st.tabs(["📚 Instrucciones", "🔑 APIs", "💡 Consejos", "⚡ Modelos"])
 
 with tab1:
     st.markdown("""
@@ -890,7 +827,7 @@ with tab1:
     2. **✍️ Escribe tu prompt**: Describe detalladamente qué quieres generar  
     3. **📋 Selecciona el tipo**: Elige entre ejercicio, artículo, texto o relato
     4. **⚙️ Personaliza**: Ajusta modelos y configuraciones según tus necesidades
-    5. **▶️ Genera**: Presiona el botón y espera tu contenido multimedia completo
+    5. **🚀 Genera**: Presiona el botón y espera tu contenido multimedia completo
     """)
 
 with tab2:
@@ -907,7 +844,7 @@ with tab2:
     - Obtén tu API key del panel de control  
     - Usado para generación de imágenes de última generación
     
-    **🎵 Audio APIs (Elige una):**
+    **🗣️ Audio APIs (Elige una):**
     
     **OpenAI API (TTS)**
     - Regístrate en: https://platform.openai.com/
@@ -939,9 +876,8 @@ with tab3:
     
     **🎵 Para el audio:**
     - El texto se limpia automáticamente para TTS
-    - Textos muy largos se truncan a 4000-5000 caracteres
+    - Textos muy largos se truncan a 4000 caracteres
     - Diferentes voces tienen personalidades distintas
-    - **ElevenLabs Multilingual v2** es el modelo recomendado oficialmente
     """)
 
 with tab4:
@@ -958,14 +894,8 @@ with tab4:
     - **Flux Pro 1.1 Ultra**: Máxima calidad, aspect ratios automáticos
     - Generación de imágenes de última generación
     
-    **🎤 ElevenLabs (Recomendado)**
-    - **Multilingual v2**: Modelo oficial recomendado, multiidioma
-    - **Turbo v2.5**: Más rápido, gran calidad
-    - **Turbo v2**: Equilibrio velocidad/calidad
-    - Calidad de audio superior a la competencia
-    
-    **🎵 OpenAI TTS-1-HD**
+    **🗣️ OpenAI TTS-1-HD**
     - Modelo de alta definición para síntesis de voz
     - 6 voces diferentes con personalidades únicas
-    - Calidad de audio profesional, más económico
+    - Calidad de audio profesional
     """)
