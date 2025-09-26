@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any
 # Configuración de la página
 st.set_page_config(
     page_title="Generador de Contenido Multimedia - Claude & Flux",
-    page_icon="🎨",
+    page_icon="📄",
     layout="wide"
 )
 
@@ -24,7 +24,7 @@ if 'generation_complete' not in st.session_state:
     st.session_state.generation_complete = False
 
 # Título principal
-st.title("🎨 Generador de Contenido Multimedia")
+st.title("📄 Generador de Contenido Multimedia")
 st.markdown("*Powered by Claude Sonnet 4 & Flux - Transforma tus ideas en texto, imágenes y audio*")
 
 # Sidebar para configuración
@@ -35,7 +35,21 @@ with st.sidebar:
     st.subheader("Claves de API")
     anthropic_api_key = st.text_input("Anthropic API Key", type="password", help="Para generación de texto con Claude Sonnet 4")
     bfl_api_key = st.text_input("Black Forest Labs API Key", type="password", help="Para generación de imágenes con Flux")
-    openai_api_key = st.text_input("OpenAI API Key", type="password", help="Para generación de audio TTS")
+    
+    # Selector de proveedor de audio
+    audio_provider = st.selectbox(
+        "Proveedor de Audio",
+        ["OpenAI TTS", "ElevenLabs"],
+        index=0,
+        help="Selecciona el servicio para generar audio"
+    )
+    
+    if audio_provider == "OpenAI TTS":
+        openai_api_key = st.text_input("OpenAI API Key", type="password", help="Para generación de audio TTS")
+        elevenlabs_api_key = None
+    else:
+        elevenlabs_api_key = st.text_input("ElevenLabs API Key", type="password", help="Para generación de audio con ElevenLabs")
+        openai_api_key = None
     
     # Configuraciones del modelo
     st.subheader("Configuración de Modelos")
@@ -66,12 +80,54 @@ with st.sidebar:
         help="Estilo visual para la generación de imágenes"
     )
     
-    # Configuración de audio
-    voice_model = st.selectbox(
-        "Voz para Audio",
-        ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
-        index=0
-    )
+    # Configuración de audio según proveedor
+    if audio_provider == "OpenAI TTS":
+        voice_model = st.selectbox(
+            "Voz para Audio (OpenAI)",
+            ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+            index=0
+        )
+        
+        # Configuración adicional para ElevenLabs
+        elevenlabs_model = st.selectbox(
+            "Modelo ElevenLabs",
+            ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_turbo_v2", "eleven_monolingual_v1"],
+            format_func=lambda x: {
+                "eleven_multilingual_v2": "🎯 Multilingual v2 (Recomendado oficial)",
+                "eleven_turbo_v2_5": "⚡ Turbo v2.5 (Más rápido)",
+                "eleven_turbo_v2": "🚀 Turbo v2 (Equilibrado)",
+                "eleven_monolingual_v1": "📊 v1 Monolingual (Legado)"
+            }[x],
+            index=0,
+            help="Multilingual v2 es el modelo oficial recomendado por ElevenLabs"
+        )
+    else:  # ElevenLabs
+        voice_model = st.selectbox(
+            "Voz para Audio (ElevenLabs v2)",
+            [
+                "pNInz6obpgDQGcFmaJgB",  # Adam
+                "21m00Tcm4TlvDq8ikWAM",  # Rachel  
+                "AZnzlk1XvdvUeBnXmlld",  # Domi
+                "EXAVITQu4vr4xnSDxMaL",  # Bella
+                "VR6AewLTigWG4xSOukaG",  # Antoni
+                "onwK4e9ZLuTAKqWW03F9",  # Arnold
+                "TxGEqnHWrfWFTfGW9XjX",  # Josh (v2)
+                "CYw3kZ02Hs0563khs1Fj",  # Dave (v2)
+                "N2lVS1w4EtoT3dr4eOWO",  # Callum (v2)
+            ],
+            format_func=lambda x: {
+                "pNInz6obpgDQGcFmaJgB": "🎯 Adam (Masculina, profesional) - Muy popular",
+                "21m00Tcm4TlvDq8ikWAM": "🎭 Rachel (Femenina, calmada) - Narrativa", 
+                "AZnzlk1XvdvUeBnXmlld": "✨ Domi (Femenina, juvenil) - Energética",
+                "EXAVITQu4vr4xnSDxMaL": "🎪 Bella (Femenina, clara) - Versátil",
+                "VR6AewLTigWG4xSOukaG": "📚 Antoni (Masculina, narrativa) - Storytelling",
+                "onwK4e9ZLuTAKqWW03F9": "💪 Arnold (Masculina, fuerte) - Autoritativa",
+                "TxGEqnHWrfWFTfGW9XjX": "🔥 Josh (Masculina, moderna v2) - NUEVA",
+                "CYw3kZ02Hs0563khs1Fj": "🎨 Dave (Masculina, conversacional v2) - NUEVA", 
+                "N2lVS1w4EtoT3dr4eOWO": "🎪 Callum (Masculina, expresiva v2) - NUEVA"
+            }[x],
+            index=0
+        )
     
     # Configuraciones adicionales
     st.subheader("Configuraciones Avanzadas")
@@ -347,7 +403,77 @@ def generate_image_flux(text_content: str, api_key: str, model: str, width: int,
         st.error(f"Traceback: {traceback.format_exc()}")
         return None
 
-# Función para generar audio con OpenAI TTS (mantenemos la misma)
+# Función para generar audio con ElevenLabs v2
+def generate_audio_elevenlabs(text: str, voice_id: str, api_key: str, model_id: str = "eleven_turbo_v2_5") -> Optional[bytes]:
+    """Genera audio usando ElevenLabs Text-to-Speech v2 (modelo seleccionable)"""
+    try:
+        headers = {
+            'Accept': 'audio/mpeg',
+            'Content-Type': 'application/json',
+            'xi-api-key': api_key
+        }
+        
+        # Limpiar y preparar el texto para TTS
+        clean_text = text.replace('\n\n', '. ').replace('\n', ' ').strip()
+        if len(clean_text) > 5000:  # ElevenLabs tiene límite de caracteres
+            clean_text = clean_text[:5000] + "..."
+        
+        # Configuración optimizada según el modelo
+        if 'v2' in model_id:
+            # Configuración para modelos v2
+            voice_settings = {
+                'stability': 0.45,      # Optimizado para v2
+                'similarity_boost': 0.75, # Mejor similitud en v2
+                'style': 0.3,          # Añade expresividad
+                'use_speaker_boost': True
+            }
+        else:
+            # Configuración para v1
+            voice_settings = {
+                'stability': 0.5,
+                'similarity_boost': 0.5,
+                'style': 0.0,
+                'use_speaker_boost': True
+            }
+        
+        data = {
+            'text': clean_text,
+            'model_id': model_id,
+            'voice_settings': voice_settings
+        }
+        
+        st.info(f"🎵 Generando audio con modelo: {model_id}")
+        
+        response = requests.post(
+            f'https://api.elevenlabs.io/v1/text-to-speech/{voice_id}',
+            headers=headers,
+            json=data,
+            timeout=120
+        )
+        
+        if response.status_code == 200:
+            st.success(f"✅ Audio generado exitosamente con {model_id}")
+            return response.content
+        else:
+            st.error(f"❌ Error generando audio con ElevenLabs: {response.status_code}")
+            try:
+                error_data = response.json()
+                st.error(f"Detalles del error: {error_data}")
+                
+                # Sugerir alternativas si el modelo no está disponible
+                if response.status_code == 422:
+                    if 'multilingual_v2' in model_id:
+                        st.warning("💡 Prueba con 'eleven_turbo_v2' si tu cuenta no tiene acceso a Multilingual v2")
+                    elif 'turbo_v2' in model_id:
+                        st.warning("💡 Prueba con 'eleven_monolingual_v1' si tu cuenta no tiene acceso a v2")
+                    
+            except:
+                st.error(f"Error text: {response.text}")
+            return None
+            
+    except Exception as e:
+        st.error(f"Error en la generación de audio con ElevenLabs: {str(e)}")
+        return None
 def generate_audio(text: str, voice: str, api_key: str) -> Optional[bytes]:
     """Genera audio usando OpenAI Text-to-Speech"""
     try:
@@ -393,7 +519,7 @@ with col1:
     
     # Input del usuario con ejemplos
     user_prompt = st.text_area(
-        "Describe tu idea:",
+        "💭 Describe tu idea:",
         placeholder="""Ejemplos:
 • Un tutorial sobre machine learning para principiantes
 • Un artículo sobre el futuro de la energía renovable  
@@ -404,7 +530,7 @@ with col1:
     
     # Tipo de contenido
     content_type = st.selectbox(
-        "Tipo de contenido a generar:",
+        "📋 Tipo de contenido a generar:",
         ["ejercicio", "artículo", "texto", "relato"],
         help="Selecciona el tipo que mejor se adapte a tu necesidad"
     )
@@ -412,7 +538,7 @@ with col1:
     # Prompt opcional para imagen
     st.subheader("🖼️ Personalización de Imagen (Opcional)")
     image_prompt = st.text_area(
-        "Prompt personalizado para la imagen:",
+        "🎨 Prompt personalizado para la imagen:",
         placeholder="""Opcional: Describe específicamente qué imagen quieres generar.
 Si lo dejas vacío, se generará automáticamente basado en el contenido del texto.
 
@@ -425,26 +551,33 @@ Ejemplos:
     )
 
 with col2:
-    st.header("🚀 Generación")
+    st.header("⚡ Generación")
     
     # Información del modelo
-    st.info(f"🧠 **Claude**: {claude_model}\n\n🎨 **Flux**: {flux_model}\n\n🗣️ **Voz**: {voice_model}")
+    st.info(f"🧠 **Claude**: {claude_model}\n\n🎨 **Flux**: {flux_model}\n\n🎤 **Voz**: {voice_model}")
     
     # Botón principal
     generate_button = st.button(
-        "🎯 Generar Contenido Multimedia",
+        "▶️ Generar Contenido Multimedia",
         type="primary",
         use_container_width=True
     )
     
     # Validación de APIs
-    apis_ready = all([anthropic_api_key, bfl_api_key, openai_api_key])
-    if not apis_ready:
+    if audio_provider == "OpenAI TTS":
+        apis_ready = all([anthropic_api_key, bfl_api_key, openai_api_key])
         missing_apis = []
         if not anthropic_api_key: missing_apis.append("Anthropic")
         if not bfl_api_key: missing_apis.append("Black Forest Labs")  
         if not openai_api_key: missing_apis.append("OpenAI")
-        
+    else:  # ElevenLabs
+        apis_ready = all([anthropic_api_key, bfl_api_key, elevenlabs_api_key])
+        missing_apis = []
+        if not anthropic_api_key: missing_apis.append("Anthropic")
+        if not bfl_api_key: missing_apis.append("Black Forest Labs")  
+        if not elevenlabs_api_key: missing_apis.append("ElevenLabs")
+    
+    if not apis_ready:
         st.warning(f"⚠️ APIs faltantes: {', '.join(missing_apis)}")
 
 # Proceso de generación
@@ -462,7 +595,7 @@ if generate_button and user_prompt:
         
         try:
             # Paso 1: Generar texto con Claude Sonnet 4
-            status_text.text("🧠 Generando contenido con Claude Sonnet 4...")
+            status_text.text("📝 Generando contenido con Claude Sonnet 4...")
             progress_bar.progress(20)
             
             generated_text = generate_text_claude(
@@ -483,7 +616,7 @@ if generate_button and user_prompt:
                 progress_bar.progress(40)
                 
                 # Paso 2: Generar imagen con Flux
-                status_text.text("🎨 Generando imagen con Flux (esto puede tomar unos minutos)...")
+                status_text.text("🖼️ Generando imagen con Flux (esto puede tomar unos minutos)...")
                 progress_bar.progress(50)
                 
                 generated_image = generate_image_flux(
@@ -512,16 +645,20 @@ if generate_button and user_prompt:
                 progress_bar.progress(70)
                 
                 # Paso 3: Generar audio
-                status_text.text("🗣️ Generando narración en audio...")
+                status_text.text(f"🎤 Generando narración en audio con {audio_provider}...")
                 progress_bar.progress(80)
                 
-                generated_audio = generate_audio(generated_text, voice_model, openai_api_key)
+                if audio_provider == "OpenAI TTS":
+                    generated_audio = generate_audio(generated_text, voice_model, openai_api_key)
+                else:  # ElevenLabs
+                    generated_audio = generate_audio_elevenlabs(generated_text, voice_model, elevenlabs_api_key, elevenlabs_model)
                 
                 if generated_audio:
                     # Guardar audio en session state
                     st.session_state.generated_content['audio'] = generated_audio
                     st.session_state.generated_content['audio_metadata'] = {
                         'voice': voice_model,
+                        'provider': audio_provider,
                         'size_kb': len(generated_audio) / 1024,
                         'timestamp': int(time.time())
                     }
@@ -529,13 +666,71 @@ if generate_button and user_prompt:
                 # Marcar como completado
                 st.session_state.generation_complete = True
                 
-                # Completado
+                # Completado - SIN ANIMACIÓN DE GLOBOS
                 progress_bar.progress(100)
-                status_text.text("✅ ¡Contenido multimedia generado exitosamente!")
+                status_text.text("✅ Contenido multimedia generado exitosamente")
                 
-                # Balloons solo una vez
-                st.balloons()
-                st.success("🎉 **¡Generación completada!** Tu contenido multimedia está listo.")
+                st.success("✅ **Generación completada** - Tu contenido multimedia está listo.")
+                
+            else:
+                st.error("❌ Error al generar el contenido de texto con Claude.")
+                
+        except Exception as e:
+            st.error(f"❌ Error durante la generación: {str(e)}")
+            progress_bar.progress(0)
+            status_text.text("❌ Generación fallida")
+                generated_image = generate_image_flux(
+                    generated_text, bfl_api_key, flux_model,
+                    image_width, image_height, flux_steps, image_style, image_prompt
+                )
+                
+                if generated_image:
+                    # Guardar imagen en session state
+                    img_buffer = io.BytesIO()
+                    generated_image.save(img_buffer, format="PNG", quality=95)
+                    img_bytes = img_buffer.getvalue()
+                    
+                    st.session_state.generated_content['image'] = img_bytes
+                    st.session_state.generated_content['image_obj'] = generated_image
+                    st.session_state.generated_content['image_metadata'] = {
+                        'width': image_width,
+                        'height': image_height,
+                        'model': flux_model,
+                        'steps': flux_steps,
+                        'style': image_style,
+                        'custom_prompt': bool(image_prompt and image_prompt.strip()),
+                        'timestamp': int(time.time())
+                    }
+                
+                progress_bar.progress(70)
+                
+                # Paso 3: Generar audio
+                status_text.text(f"🎤 Generando narración en audio con {audio_provider}...")
+                progress_bar.progress(80)
+                
+                if audio_provider == "OpenAI TTS":
+                    generated_audio = generate_audio(generated_text, voice_model, openai_api_key)
+                else:  # ElevenLabs
+                    generated_audio = generate_audio_elevenlabs(generated_text, voice_model, elevenlabs_api_key, elevenlabs_model)
+                
+                if generated_audio:
+                    # Guardar audio en session state
+                    st.session_state.generated_content['audio'] = generated_audio
+                    st.session_state.generated_content['audio_metadata'] = {
+                        'voice': voice_model,
+                        'provider': audio_provider,
+                        'size_kb': len(generated_audio) / 1024,
+                        'timestamp': int(time.time())
+                    }
+                
+                # Marcar como completado
+                st.session_state.generation_complete = True
+                
+                # Completado - SIN ANIMACIÓN DE GLOBOS
+                progress_bar.progress(100)
+                status_text.text("✅ Contenido multimedia generado exitosamente")
+                
+                st.success("✅ **Generación completada** - Tu contenido multimedia está listo.")
                 
             else:
                 st.error("❌ Error al generar el contenido de texto con Claude.")
@@ -569,7 +764,7 @@ if st.session_state.generation_complete and st.session_state.generated_content:
             # Botón para descargar texto con key única
             text_timestamp = metadata.get('timestamp', int(time.time()))
             st.download_button(
-                label="📥 Descargar Texto",
+                label="⬇️ Descargar Texto",
                 data=st.session_state.generated_content['text'],
                 file_name=f"{content_type}_claude_{text_timestamp}.txt",
                 mime="text/plain",
@@ -599,14 +794,14 @@ if st.session_state.generation_complete and st.session_state.generated_content:
             
             # Información adicional
             if custom_prompt_used:
-                st.success("✨ Se utilizó tu prompt personalizado para la imagen")
+                st.success("✓ Se utilizó tu prompt personalizado para la imagen")
             else:
-                st.info("🤖 Se generó automáticamente basándose en el contenido del texto")
+                st.info("ℹ️ Se generó automáticamente basándose en el contenido del texto")
             
             # Botón para descargar imagen con key única
             img_timestamp = metadata.get('timestamp', int(time.time()))
             st.download_button(
-                label="📥 Descargar Imagen",
+                label="⬇️ Descargar Imagen",
                 data=st.session_state.generated_content['image'],
                 file_name=f"flux_image_{img_timestamp}.png",
                 mime="image/png",
@@ -622,16 +817,34 @@ if st.session_state.generation_complete and st.session_state.generated_content:
             # Información del audio
             metadata = st.session_state.generated_content.get('audio_metadata', {})
             voice = metadata.get('voice', 'N/A')
+            provider = metadata.get('provider', 'N/A')
             size_kb = metadata.get('size_kb', 0)
             
-            st.caption(f"🎧 Voz: {voice} • Tamaño: {size_kb:.1f} KB")
+            # Mostrar nombre de voz más amigable para ElevenLabs
+            if provider == "ElevenLabs":
+                voice_names = {
+                    "pNInz6obpgDQGcFmaJgB": "Adam",
+                    "21m00Tcm4TlvDq8ikWAM": "Rachel", 
+                    "AZnzlk1XvdvUeBnXmlld": "Domi",
+                    "EXAVITQu4vr4xnSDxMaL": "Bella",
+                    "VR6AewLTigWG4xSOukaG": "Antoni",
+                    "onwK4e9ZLuTAKqWW03F9": "Arnold",
+                    "TxGEqnHWrfWFTfGW9XjX": "Josh (v2)",
+                    "CYw3kZ02Hs0563khs1Fj": "Dave (v2)",
+                    "N2lVS1w4EtoT3dr4eOWO": "Callum (v2)"
+                }
+                display_voice = voice_names.get(voice, voice)
+            else:
+                display_voice = voice
+                
+            st.caption(f"🎤 Voz: {display_voice} • Proveedor: {provider} • Tamaño: {size_kb:.1f} KB")
             
             # Botón para descargar audio con key única
             audio_timestamp = metadata.get('timestamp', int(time.time()))
             st.download_button(
-                label="📥 Descargar Audio",
+                label="⬇️ Descargar Audio",
                 data=st.session_state.generated_content['audio'],
-                file_name=f"audio_tts_{audio_timestamp}.mp3",
+                file_name=f"audio_{provider.lower().replace(' ', '_')}_{audio_timestamp}.mp3",
                 mime="audio/mp3",
                 key=f"download_audio_{audio_timestamp}"
             )
@@ -666,7 +879,7 @@ if st.session_state.generation_complete and st.session_state.generated_content:
 st.markdown("---")
 
 # Tabs informativas
-tab1, tab2, tab3, tab4 = st.tabs(["📚 Instrucciones", "🔑 APIs", "💡 Consejos", "⚡ Modelos"])
+tab1, tab2, tab3, tab4 = st.tabs(["📋 Instrucciones", "🔑 APIs", "💡 Consejos", "⚙️ Modelos"])
 
 with tab1:
     st.markdown("""
@@ -676,7 +889,7 @@ with tab1:
     2. **✍️ Escribe tu prompt**: Describe detalladamente qué quieres generar  
     3. **📋 Selecciona el tipo**: Elige entre ejercicio, artículo, texto o relato
     4. **⚙️ Personaliza**: Ajusta modelos y configuraciones según tus necesidades
-    5. **🚀 Genera**: Presiona el botón y espera tu contenido multimedia completo
+    5. **▶️ Genera**: Presiona el botón y espera tu contenido multimedia completo
     """)
 
 with tab2:
@@ -693,10 +906,19 @@ with tab2:
     - Obtén tu API key del panel de control  
     - Usado para generación de imágenes de última generación
     
-    **🗣️ OpenAI API (TTS)**
+    **🎵 Audio APIs (Elige una):**
+    
+    **OpenAI API (TTS)**
     - Regístrate en: https://platform.openai.com/
     - Crea una API key en tu cuenta
-    - Usado para conversión de texto a voz
+    - 6 voces disponibles, calidad HD
+    
+    **ElevenLabs API (TTS v2)**
+    - Regístrate en: https://elevenlabs.io/
+    - Obtén tu API key del dashboard
+    - Modelos v2: Calidad ultra realista y expresiva
+    - Free tier: 10,000 caracteres/mes
+    - Recomendado: Mejor calidad de voz disponible
     """)
 
 with tab3:
@@ -716,8 +938,9 @@ with tab3:
     
     **🎵 Para el audio:**
     - El texto se limpia automáticamente para TTS
-    - Textos muy largos se truncan a 4000 caracteres
+    - Textos muy largos se truncan a 4000-5000 caracteres
     - Diferentes voces tienen personalidades distintas
+    - **ElevenLabs Multilingual v2** es el modelo recomendado oficialmente
     """)
 
 with tab4:
@@ -734,8 +957,14 @@ with tab4:
     - **Flux Pro 1.1 Ultra**: Máxima calidad, aspect ratios automáticos
     - Generación de imágenes de última generación
     
-    **🗣️ OpenAI TTS-1-HD**
+    **🎤 ElevenLabs (Recomendado)**
+    - **Multilingual v2**: Modelo oficial recomendado, multiidioma
+    - **Turbo v2.5**: Más rápido, gran calidad
+    - **Turbo v2**: Equilibrio velocidad/calidad
+    - Calidad de audio superior a la competencia
+    
+    **🎵 OpenAI TTS-1-HD**
     - Modelo de alta definición para síntesis de voz
     - 6 voces diferentes con personalidades únicas
-    - Calidad de audio profesional
+    - Calidad de audio profesional, más económico
     """)
