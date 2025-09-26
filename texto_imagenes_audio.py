@@ -624,6 +624,7 @@ if generate_button and user_prompt:
                     image_width, image_height, flux_steps, image_style, image_prompt
                 )
                 
+                
                 if generated_image:
                     # Guardar imagen en session state
                     img_buffer = io.BytesIO()
