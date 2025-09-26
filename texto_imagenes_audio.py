@@ -247,8 +247,7 @@ def optimize_prompt_for_flux(prompt, style="photorealistic"):
     except Exception as e:
         st.error(f"Error optimizando prompt: {str(e)}")
         return prompt
-
-# Función para generar imagen con Flux Pro
+        # Función para generar imagen con Flux Pro
 def generate_image_flux_pro(prompt, width, height, steps, api_key, style="photorealistic"):
     """Genera imagen usando Flux Pro 1.1"""
     optimized_prompt = optimize_prompt_for_flux(prompt, style)
@@ -665,4 +664,230 @@ if generate_button and user_prompt:
             status_text.text("❌ Generación fallida")
 
 # Mostrar contenido generado desde session state
-if st.session_state.generation_complete and st.session_state.generated_
+if st.session_state.generation_complete and st.session_state.generated_content:
+    # Contenedores para resultados
+    text_container = st.container()
+    image_container = st.container()
+    audio_container = st.container()
+    
+    # Mostrar texto
+    if 'text' in st.session_state.generated_content:
+        with text_container:
+            st.header("📄 Contenido Generado por Claude")
+            st.markdown(st.session_state.generated_content['text'])
+            
+            # Métricas del texto
+            metadata = st.session_state.generated_content.get('text_metadata', {})
+            word_count = metadata.get('word_count', 0)
+            char_count = metadata.get('char_count', 0)
+            content_type = metadata.get('content_type', 'texto')
+            
+            st.caption(f"📊 {word_count} palabras • {char_count} caracteres")
+            
+            # Botón para descargar texto con key única
+            text_timestamp = metadata.get('timestamp', int(time.time()))
+            st.download_button(
+                label="⬇️ Descargar Texto",
+                data=st.session_state.generated_content['text'],
+                file_name=f"{content_type}_claude_{text_timestamp}.txt",
+                mime="text/plain",
+                key=f"download_text_{text_timestamp}"
+            )
+    
+    # Mostrar imagen
+    if 'image_obj' in st.session_state.generated_content:
+        with image_container:
+            st.header("🖼️ Imagen Generada por Flux")
+            
+            metadata = st.session_state.generated_content.get('image_metadata', {})
+            width = metadata.get('width', 'N/A')
+            height = metadata.get('height', 'N/A')
+            model = metadata.get('model', 'N/A')
+            style = metadata.get('style', 'N/A')
+            custom_prompt_used = metadata.get('custom_prompt', False)
+            
+            # Descripción mejorada
+            prompt_info = "Con prompt personalizado" if custom_prompt_used else "Generado automáticamente"
+            caption = f"Generada con {model} • {width}x{height}px • Estilo: {style} • {prompt_info}"
+            
+            st.image(
+                st.session_state.generated_content['image_obj'], 
+                caption=caption
+            )
+            
+            # Información adicional
+            if custom_prompt_used:
+                st.success("✓ Se utilizó tu prompt personalizado para la imagen")
+            else:
+                st.info("ℹ️ Se generó automáticamente basándose en el contenido del texto")
+            
+            # Botón para descargar imagen con key única
+            img_timestamp = metadata.get('timestamp', int(time.time()))
+            st.download_button(
+                label="⬇️ Descargar Imagen",
+                data=st.session_state.generated_content['image'],
+                file_name=f"flux_image_{img_timestamp}.png",
+                mime="image/png",
+                key=f"download_image_{img_timestamp}"
+            )
+    
+    # Mostrar audio
+    if 'audio' in st.session_state.generated_content:
+        with audio_container:
+            st.header("🎵 Audio Generado")
+            st.audio(st.session_state.generated_content['audio'], format="audio/mp3")
+            
+            # Información del audio
+            metadata = st.session_state.generated_content.get('audio_metadata', {})
+            voice = metadata.get('voice', 'N/A')
+            provider = metadata.get('provider', 'N/A')
+            size_kb = metadata.get('size_kb', 0)
+            
+            # Mostrar nombre de voz más amigable para ElevenLabs
+            if provider == "ElevenLabs":
+                voice_names = {
+                    "pNInz6obpgDQGcFmaJgB": "Adam",
+                    "21m00Tcm4TlvDq8ikWAM": "Rachel", 
+                    "AZnzlk1XvdvUeBnXmlld": "Domi",
+                    "EXAVITQu4vr4xnSDxMaL": "Bella",
+                    "VR6AewLTigWG4xSOukaG": "Antoni",
+                    "onwK4e9ZLuTAKqWW03F9": "Arnold",
+                    "TxGEqnHWrfWFTfGW9XjX": "Josh (v2)",
+                    "CYw3kZ02Hs0563khs1Fj": "Dave (v2)",
+                    "N2lVS1w4EtoT3dr4eOWO": "Callum (v2)"
+                }
+                display_voice = voice_names.get(voice, voice)
+            else:
+                display_voice = voice
+                
+            st.caption(f"🎤 Voz: {display_voice} • Proveedor: {provider} • Tamaño: {size_kb:.1f} KB")
+            
+            # Botón para descargar audio con key única
+            audio_timestamp = metadata.get('timestamp', int(time.time()))
+            st.download_button(
+                label="⬇️ Descargar Audio",
+                data=st.session_state.generated_content['audio'],
+                file_name=f"audio_{provider.lower().replace(' ', '_')}_{audio_timestamp}.mp3",
+                mime="audio/mp3",
+                key=f"download_audio_{audio_timestamp}"
+            )
+    
+    # Estadísticas finales
+    with st.expander("📈 Estadísticas de generación"):
+        col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
+        
+        text_meta = st.session_state.generated_content.get('text_metadata', {})
+        image_meta = st.session_state.generated_content.get('image_metadata', {})
+        audio_meta = st.session_state.generated_content.get('audio_metadata', {})
+        
+        with col_stats1:
+            st.metric("Palabras generadas", text_meta.get('word_count', 0))
+        with col_stats2:
+            width = image_meta.get('width', 0)
+            height = image_meta.get('height', 0)
+            st.metric("Resolución imagen", f"{width}x{height}" if width and height else "N/A")
+        with col_stats3:
+            st.metric("Pasos Flux", image_meta.get('steps', 0))
+        with col_stats4:
+            prompt_type = "Personalizado" if image_meta.get('custom_prompt', False) else "Automático"
+            st.metric("Tipo de prompt", prompt_type)
+    
+    # Botón para limpiar y empezar de nuevo
+    if st.button("🔄 Generar Nuevo Contenido", type="secondary"):
+        st.session_state.generated_content = {}
+        st.session_state.generation_complete = False
+        st.rerun()
+
+# Información adicional en el footer
+st.markdown("---")
+
+# Tabs informativas
+tab1, tab2, tab3, tab4 = st.tabs(["📋 Instrucciones", "🔑 APIs", "💡 Consejos", "⚙️ Modelos"])
+
+with tab1:
+    st.markdown("""
+    ### Cómo usar la aplicación:
+    
+    1. **🔧 Configura las APIs**: Ingresa tus claves en la barra lateral
+    2. **✍️ Escribe tu prompt**: Describe detalladamente qué quieres generar  
+    3. **📋 Selecciona el tipo**: Elige entre ejercicio, artículo, texto o relato
+    4. **⚙️ Personaliza**: Ajusta modelos y configuraciones según tus necesidades
+    5. **▶️ Genera**: Presiona el botón y espera tu contenido multimedia completo
+    """)
+
+with tab2:
+    st.markdown("""
+    ### APIs necesarias:
+    
+    **🧠 Anthropic API (Claude)**
+    - Regístrate en: https://console.anthropic.com/
+    - Crea una API key en tu dashboard
+    - Usado para generación de texto de alta calidad
+    
+    **🎨 Black Forest Labs API (Flux)**
+    - Regístrate en: https://api.bfl.ml/
+    - Obtén tu API key del panel de control  
+    - Usado para generación de imágenes de última generación
+    
+    **🎵 Audio APIs (Elige una):**
+    
+    **OpenAI API (TTS)**
+    - Regístrate en: https://platform.openai.com/
+    - Crea una API key en tu cuenta
+    - 6 voces disponibles, calidad HD
+    
+    **ElevenLabs API (TTS v2)**
+    - Regístrate en: https://elevenlabs.io/
+    - Obtén tu API key del dashboard
+    - Modelos v2: Calidad ultra realista y expresiva
+    - Free tier: 10,000 caracteres/mes
+    - Recomendado: Mejor calidad de voz disponible
+    """)
+
+with tab3:
+    st.markdown("""
+    ### Consejos para mejores resultados:
+    
+    **📝 Para el texto:**
+    - Sé específico y detallado en tu prompt
+    - Incluye el contexto y audiencia objetivo
+    - Especifica el tono deseado (formal, casual, técnico, etc.)
+    
+    **🖼️ Para las imágenes:**
+    - **Automático**: Se genera basándose en el contenido del texto
+    - **Personalizado**: Describe exactamente qué quieres ver en la imagen
+    - **Estilos disponibles**: Photorealistic, Digital-art, Cinematic, Documentary, Portrait
+    - **Ejemplos de prompts buenos**: "Una profesora explicando matemáticas en un aula moderna con tecnología", "Paneles solares en un campo al atardecer con montañas de fondo"
+    
+    **🎵 Para el audio:**
+    - El texto se limpia automáticamente para TTS
+    - Textos muy largos se truncan a 4000-5000 caracteres
+    - Diferentes voces tienen personalidades distintas
+    - **ElevenLabs Multilingual v2** es el modelo recomendado oficialmente
+    """)
+
+with tab4:
+    st.markdown("""
+    ### Información de los modelos:
+    
+    **🧠 Claude Sonnet 4 (2025)**
+    - Modelo más avanzado de Anthropic
+    - claude-sonnet-4-20250514: La versión más reciente
+    - Excelente razonamiento, creatividad y contexto largo
+    
+    **🎨 Flux (Black Forest Labs)**
+    - **Flux Pro 1.1**: Control total de dimensiones, excelente calidad
+    - **Flux Pro 1.1 Ultra**: Máxima calidad, aspect ratios automáticos
+    - Generación de imágenes de última generación
+    
+    **🎤 ElevenLabs (Recomendado)**
+    - **Multilingual v2**: Modelo oficial recomendado, multiidioma
+    - **Turbo v2.5**: Más rápido, gran calidad
+    - **Turbo v2**: Equilibrio velocidad/calidad
+    - Calidad de audio superior a la competencia
+    
+    **🎵 OpenAI TTS-1-HD**
+    - Modelo de alta definición para síntesis de voz
+    - 6 voces diferentes con personalidades únicas
+    - Calidad de audio profesional, más económico
+    """)
