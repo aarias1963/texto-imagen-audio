@@ -170,33 +170,140 @@ El {content_type} debe tener la extensión apropiada para su tipo y propósito."
         st.error(f"Error en la generación de texto con Claude: {str(e)}")
         return None
 
-# Función para optimizar prompt para Flux (basada en el archivo de referencia)
-def optimize_prompt_for_flux(prompt, style="photorealistic"):
-    """Optimiza el prompt para mejor generación de imágenes con el estilo seleccionado"""
+# Nueva función para generar prompt visual con Claude
+def generate_visual_prompt_with_claude(text_content: str, content_type: str, style: str, api_key: str, model: str) -> Optional[str]:
+    """Genera un prompt visual optimizado usando Claude basado en el contenido generado"""
     try:
-        # Definir estilos específicos
-        style_prompts = {
-            "photorealistic": "Photorealistic, high-quality photograph of: {prompt}. Professional photography, realistic lighting, sharp focus, detailed textures, natural colors, 8K resolution, masterpiece quality, cinematic composition",
-            "digital-art": "High-quality digital artwork of: {prompt}. Professional digital art, vibrant colors, sharp focus, detailed illustration, artistic composition, masterpiece",
-            "cinematic": "Cinematic scene of: {prompt}. Movie-like composition, dramatic lighting, professional cinematography, high production value, detailed scene, 8K quality",
-            "documentary": "Documentary-style photograph of: {prompt}. Authentic, candid photography, natural lighting, real-world setting, journalistic quality, unposed, realistic",
-            "portrait": "Professional portrait of: {prompt}. Studio lighting, sharp focus, detailed features, high-quality photography, professional composition, realistic skin tones"
+        headers = {
+            "x-api-key": api_key,
+            "Content-Type": "application/json",
+            "anthropic-version": "2023-06-01"
         }
         
-        # Usar el estilo seleccionado o el por defecto
-        template = style_prompts.get(style, style_prompts["photorealistic"])
-        optimized = template.format(prompt=prompt)
+        # System prompt especializado para generación de prompts visuales
+        system_prompt = """Eres un experto en generación de prompts para modelos de AI de imágenes, específicamente para Flux. Tu tarea es analizar contenido de texto y crear prompts visuales optimizados en inglés.
+
+REGLAS IMPORTANTES:
+1. El prompt DEBE estar en inglés perfecto
+2. Debe ser específico y descriptivo visualmente
+3. Incluir términos técnicos de fotografía/arte cuando sea apropiado
+4. Adaptar al estilo solicitado
+5. Ser conciso pero detallado (máximo 150 palabras)
+6. NO reproducir texto del contenido, solo elementos visuales
+
+ESTRUCTURA DEL PROMPT:
+[Descripción visual principal] + [Estilo técnico] + [Calidad/Resolución] + [Elementos compositivos]"""
+
+        # Instrucciones específicas por tipo de contenido
+        content_instructions = {
+            "ejercicio": """Analiza este ejercicio educativo y crea un prompt visual que represente:
+- La materia/tema principal del ejercicio
+- Un ambiente educativo apropiado (aula, laboratorio, biblioteca, etc.)
+- Elementos visuales que complementen el aprendizaje
+- Personas estudiando o practicando el tema si es relevante
+- Materiales educativos relacionados
+
+Evita incluir texto específico del ejercicio, solo elementos visuales educativos.""",
+            
+            "artículo": """Analiza este artículo y crea un prompt visual que represente:
+- El tema central o concepto principal
+- Elementos que ilustren la información clave
+- Un contexto visual apropiado para el tema
+- Objetos, personas o lugares relevantes al contenido
+- Una composición que transmita el mensaje principal
+
+Evita texto específico, enfócate en elementos visuales informativos.""",
+            
+            "texto": """Analiza este texto y crea un prompt visual que capture:
+- El tema o concepto principal
+- El tono y ambiente del contenido
+- Elementos visuales que complementen el mensaje
+- Una composición apropiada para el propósito del texto
+- Elementos que refuercen visualmente la idea principal
+
+Enfócate en la esencia visual del contenido.""",
+            
+            "relato": """Analiza este relato y crea un prompt visual que capture:
+- La escena más representativa o impactante
+- Los personajes principales (sin nombres específicos)
+- La ambientación y época de la historia
+- El mood/atmósfera del relato
+- Elementos narrativos clave visualmente
+
+Crea una escena cinematográfica que represente el relato."""
+        }
         
-        return optimized
+        # Adaptaciones por estilo visual
+        style_adaptations = {
+            "photorealistic": "Como una fotografía profesional realista, con iluminación natural, alta definición, composición fotográfica, detalles nítidos",
+            "digital-art": "Como arte digital de alta calidad, colores vibrantes, composición artística, estilo ilustrativo moderno, diseño profesional",
+            "cinematic": "Con composición cinematográfica, iluminación dramática, profundidad de campo, ambiente de película, producción de alta calidad",
+            "documentary": "Estilo documental auténtico, fotografía candida, iluminación natural, ambiente real, calidad periodística",
+            "portrait": "Enfoque retrato profesional, iluminación de estudio, composición centrada en personas, calidad profesional"
+        }
+        
+        user_message = f"""CONTENIDO A ANALIZAR:
+{text_content}
+
+TIPO DE CONTENIDO: {content_type}
+ESTILO DESEADO: {style}
+
+{content_instructions.get(content_type, content_instructions["texto"])}
+
+INSTRUCCIONES ADICIONALES PARA EL ESTILO:
+{style_adaptations.get(style, style_adaptations["photorealistic"])}
+
+Por favor, responde ÚNICAMENTE con el prompt visual en inglés optimizado para Flux, sin explicaciones adicionales."""
+        
+        data = {
+            "model": model,
+            "max_tokens": 200,
+            "temperature": 0.3,  # Menos temperatura para más consistencia
+            "system": system_prompt,
+            "messages": [
+                {"role": "user", "content": user_message}
+            ]
+        }
+        
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers=headers,
+            json=data,
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            response_data = response.json()
+            visual_prompt = response_data["content"][0]["text"].strip()
+            return visual_prompt
+        else:
+            st.error(f"Error generando prompt visual con Claude: {response.status_code} - {response.text}")
+            return None
+            
+    except Exception as e:
+        st.error(f"Error en la generación de prompt visual con Claude: {str(e)}")
+        return None
+        # Función para optimizar prompt para Flux (ahora simplificada ya que Claude genera el prompt completo)
+def optimize_prompt_for_flux(prompt, style="photorealistic"):
+    """Aplica optimizaciones finales al prompt ya generado por Claude"""
+    try:
+        # Agregar términos técnicos finales si no están presentes
+        quality_terms = "high quality, detailed, professional"
+        resolution_terms = "8K resolution, sharp focus"
+        
+        # Verificar si ya contiene términos de calidad
+        prompt_lower = prompt.lower()
+        if not any(term in prompt_lower for term in ["high quality", "8k", "detailed", "professional", "masterpiece"]):
+            prompt += f", {quality_terms}, {resolution_terms}"
+        
+        return prompt
     except Exception as e:
         st.error(f"Error optimizando prompt: {str(e)}")
         return prompt
 
 # Función para generar imagen con Flux Pro (basada en el archivo de referencia)
-def generate_image_flux_pro(prompt, width, height, steps, api_key, style="photorealistic"):
-    """Genera imagen usando Flux Pro 1.1 (basado en implementación funcional)"""
-    optimized_prompt = optimize_prompt_for_flux(prompt, style)
-    
+def generate_image_flux_pro(prompt, width, height, steps, api_key):
+    """Genera imagen usando Flux Pro 1.1"""
     headers = {
         'accept': 'application/json',
         'x-key': api_key,
@@ -204,7 +311,7 @@ def generate_image_flux_pro(prompt, width, height, steps, api_key, style="photor
     }
     
     json_data = {
-        'prompt': optimized_prompt,
+        'prompt': prompt,
         'width': int(width),
         'height': int(height),
         'steps': int(steps),
@@ -222,13 +329,11 @@ def generate_image_flux_pro(prompt, width, height, steps, api_key, style="photor
         json=json_data,
     )
     
-    return process_flux_response(response, api_key), optimized_prompt
+    return process_flux_response(response, api_key)
 
 # Función para generar imagen con Flux Ultra (basada en el archivo de referencia)  
-def generate_image_flux_ultra(prompt, aspect_ratio, api_key, style="photorealistic"):
-    """Genera imagen usando Flux Pro 1.1 Ultra (basado en implementación funcional)"""
-    optimized_prompt = optimize_prompt_for_flux(prompt, style)
-    
+def generate_image_flux_ultra(prompt, aspect_ratio, api_key):
+    """Genera imagen usando Flux Pro 1.1 Ultra"""
     headers = {
         'accept': 'application/json',
         'x-key': api_key,
@@ -236,7 +341,7 @@ def generate_image_flux_ultra(prompt, aspect_ratio, api_key, style="photorealist
     }
     
     json_data = {
-        'prompt': optimized_prompt,
+        'prompt': prompt,
         'seed': 42,
         'aspect_ratio': aspect_ratio,
         'safety_tolerance': 2,
@@ -250,7 +355,7 @@ def generate_image_flux_ultra(prompt, aspect_ratio, api_key, style="photorealist
         json=json_data,
     )
     
-    return process_flux_response(response, api_key), optimized_prompt
+    return process_flux_response(response, api_key)
 
 # Función para procesar respuesta de Flux (basada en el archivo de referencia)
 def process_flux_response(response, api_key):
@@ -309,43 +414,75 @@ def process_flux_response(response, api_key):
         
         return "Timeout: La generación tomó demasiado tiempo."
 
-# Función principal para generar imagen con Flux
-def generate_image_flux(text_content: str, api_key: str, model: str, width: int, height: int, steps: int, style: str = "photorealistic", custom_prompt: str = None) -> Optional[Image.Image]:
-    """Genera imagen usando Flux (wrapper que usa la implementación funcional)"""
+# Función principal para generar imagen con Flux (MEJORADA)
+def generate_image_flux(text_content: str, content_type: str, api_key: str, model: str, width: int, height: int, steps: int, style: str = "photorealistic", custom_prompt: str = None, claude_api_key: str = None, claude_model: str = None) -> tuple[Optional[Image.Image], str]:
+    """Genera imagen usando Flux con prompt inteligente generado por Claude"""
     try:
         # Determinar qué prompt usar
         if custom_prompt and custom_prompt.strip():
-            # Usar el prompt personalizado del usuario
+            # Usar el prompt personalizado del usuario (ya en inglés)
             visual_prompt = custom_prompt.strip()
+            final_prompt = optimize_prompt_for_flux(visual_prompt, style)
             st.info(f"🎨 Usando prompt personalizado para la imagen")
+            prompt_source = "personalizado"
         else:
-            # Generar prompt automáticamente desde el texto
-            content_preview = ' '.join(text_content.split()[:80])  # Primeras 80 palabras
-            visual_prompt = f"A realistic scene representing: {content_preview}. Real world setting, natural environment, authentic details"
-            st.info(f"🤖 Generando prompt automático desde el contenido")
+            # Generar prompt automáticamente usando Claude
+            st.info(f"🤖 Analizando contenido con Claude para generar prompt visual...")
+            
+            if not claude_api_key:
+                # Fallback al método anterior si no hay API de Claude
+                content_preview = ' '.join(text_content.split()[:80])
+                visual_prompt = f"A realistic scene representing: {content_preview}. Real world setting, natural environment, authentic details"
+                st.warning("⚠️ Usando método básico (falta Claude API key para análisis inteligente)")
+                prompt_source = "básico"
+            else:
+                # Usar Claude para generar prompt inteligente
+                visual_prompt = generate_visual_prompt_with_claude(
+                    text_content, content_type, style, claude_api_key, claude_model
+                )
+                
+                if visual_prompt:
+                    st.success(f"✅ Claude analizó el {content_type} y generó prompt visual optimizado")
+                    prompt_source = "inteligente"
+                else:
+                    # Fallback si Claude falla
+                    content_preview = ' '.join(text_content.split()[:80])
+                    visual_prompt = f"A realistic scene representing: {content_preview}. Real world setting, natural environment, authentic details"
+                    st.warning("⚠️ Usando método básico (error en análisis de Claude)")
+                    prompt_source = "básico"
+            
+            final_prompt = optimize_prompt_for_flux(visual_prompt, style)
         
+        # Mostrar información del prompt generado
+        with st.expander(f"📝 Prompt generado ({prompt_source})"):
+            st.code(final_prompt, language="text")
+            if prompt_source == "inteligente":
+                st.success("🧠 Prompt generado por Claude analizando todo el contenido")
+            elif prompt_source == "personalizado":
+                st.info("👤 Prompt personalizado proporcionado por el usuario")
+            else:
+                st.warning("⚙️ Prompt básico (primeras palabras del contenido)")
+        
+        # Generar imagen según el modelo
         if model == "flux-pro-1.1-ultra":
             # Usar Ultra con aspect ratio
             aspect_ratio = f"{width}:{height}" if width == height else "16:9"
-            result, optimized_prompt = generate_image_flux_ultra(visual_prompt, aspect_ratio, api_key, style)
+            result = generate_image_flux_ultra(final_prompt, aspect_ratio, api_key)
         else:
             # Usar Pro normal
-            result, optimized_prompt = generate_image_flux_pro(visual_prompt, width, height, steps, api_key, style)
-        
-        # Mostrar el prompt final optimizado
-        st.info(f"📝 Prompt final optimizado para Flux: {optimized_prompt}")
+            result = generate_image_flux_pro(final_prompt, width, height, steps, api_key)
         
         if isinstance(result, Image.Image):
-            return result
+            return result, final_prompt
         else:
             st.error(f"Error en Flux: {result}")
-            return None
+            return None, final_prompt
             
     except Exception as e:
         st.error(f"Error en la generación de imagen con Flux: {str(e)}")
         import traceback
         st.error(f"Traceback: {traceback.format_exc()}")
-        return None
+        return None, ""
 
 # Función para generar audio con OpenAI TTS (mantenemos la misma)
 def generate_audio(text: str, voice: str, api_key: str) -> Optional[bytes]:
@@ -412,23 +549,26 @@ with col1:
     # Prompt opcional para imagen
     st.subheader("🖼️ Personalización de Imagen (Opcional)")
     image_prompt = st.text_area(
-        "Prompt personalizado para la imagen:",
-        placeholder="""Opcional: Describe específicamente qué imagen quieres generar.
-Si lo dejas vacío, se generará automáticamente basado en el contenido del texto.
+        "Prompt personalizado para la imagen (en inglés):",
+        placeholder="""Opcional: Describe específicamente qué imagen quieres generar EN INGLÉS.
+Si lo dejas vacío, Claude analizará el contenido y generará automáticamente un prompt optimizado.
 
 Ejemplos:
-• Una persona estudiando con libros de matemáticas en una biblioteca moderna
-• Un paisaje futurista con paneles solares y turbinas eólicas
-• Un gato naranja con sombrero viajando en una máquina del tiempo steampunk""",
-        height=80,
-        help="Si especificas un prompt, este se usará en lugar del generado automáticamente"
+• A person studying with mathematics books in a modern library, natural lighting, photorealistic
+• A futuristic landscape with solar panels and wind turbines at sunset, cinematic composition
+• An orange cat wearing a steampunk hat traveling in a time machine, digital art style""",
+        height=100,
+        help="Si especificas un prompt EN INGLÉS, este se usará en lugar del generado automáticamente por Claude"
     )
 
 with col2:
     st.header("🚀 Generación")
     
-    # Información del modelo
+    # Información del modelo mejorada
     st.info(f"🧠 **Claude**: {claude_model}\n\n🎨 **Flux**: {flux_model}\n\n🗣️ **Voz**: {voice_model}")
+    
+    # Información sobre el sistema de prompts
+    st.success("🔬 **Nuevo Sistema Inteligente:**\n\nClaude analiza todo tu contenido para generar prompts visuales perfectamente adaptados")
     
     # Botón principal
     generate_button = st.button(
@@ -447,7 +587,7 @@ with col2:
         
         st.warning(f"⚠️ APIs faltantes: {', '.join(missing_apis)}")
 
-# Proceso de generación
+# Proceso de generación (MEJORADO)
 if generate_button and user_prompt:
     if not apis_ready:
         st.error("❌ Por favor, proporciona todas las claves de API necesarias.")
@@ -463,7 +603,7 @@ if generate_button and user_prompt:
         try:
             # Paso 1: Generar texto con Claude Sonnet 4
             status_text.text("🧠 Generando contenido con Claude Sonnet 4...")
-            progress_bar.progress(20)
+            progress_bar.progress(15)
             
             generated_text = generate_text_claude(
                 user_prompt, content_type, anthropic_api_key, 
@@ -480,19 +620,20 @@ if generate_button and user_prompt:
                     'timestamp': int(time.time())
                 }
                 
+                progress_bar.progress(30)
+                
+                # Paso 2: Generar imagen con Flux (MEJORADO)
+                status_text.text("🎨 Analizando contenido y generando imagen con Flux...")
                 progress_bar.progress(40)
                 
-                # Paso 2: Generar imagen con Flux
-                status_text.text("🎨 Generando imagen con Flux (esto puede tomar unos minutos)...")
-                progress_bar.progress(50)
-                
-                generated_image = generate_image_flux(
-                    generated_text, bfl_api_key, flux_model,
-                    image_width, image_height, flux_steps, image_style, image_prompt
+                generated_image, used_prompt = generate_image_flux(
+                    generated_text, content_type, bfl_api_key, flux_model,
+                    image_width, image_height, flux_steps, image_style, 
+                    image_prompt, anthropic_api_key, claude_model
                 )
                 
                 if generated_image:
-                    # Guardar imagen en session state
+                    # Guardar imagen en session state con información del prompt
                     img_buffer = io.BytesIO()
                     generated_image.save(img_buffer, format="PNG", quality=95)
                     img_bytes = img_buffer.getvalue()
@@ -506,6 +647,8 @@ if generate_button and user_prompt:
                         'steps': flux_steps,
                         'style': image_style,
                         'custom_prompt': bool(image_prompt and image_prompt.strip()),
+                        'used_prompt': used_prompt,
+                        'prompt_intelligent': not bool(image_prompt and image_prompt.strip()),
                         'timestamp': int(time.time())
                     }
                 
@@ -513,7 +656,7 @@ if generate_button and user_prompt:
                 
                 # Paso 3: Generar audio
                 status_text.text("🗣️ Generando narración en audio...")
-                progress_bar.progress(80)
+                progress_bar.progress(85)
                 
                 generated_audio = generate_audio(generated_text, voice_model, openai_api_key)
                 
@@ -534,6 +677,7 @@ if generate_button and user_prompt:
                 status_text.text("✅ ¡Contenido multimedia generado exitosamente!")
                 
                 # Balloons solo una vez
+                st.balloons()
                 st.success("🎉 **¡Generación completada!** Tu contenido multimedia está listo.")
                 
             else:
@@ -544,7 +688,7 @@ if generate_button and user_prompt:
             progress_bar.progress(0)
             status_text.text("❌ Generación fallida")
 
-# Mostrar contenido generado desde session state
+# Mostrar contenido generado desde session state (MEJORADO)
 if st.session_state.generation_complete and st.session_state.generated_content:
     # Contenedores para resultados
     text_container = st.container()
@@ -575,7 +719,7 @@ if st.session_state.generation_complete and st.session_state.generated_content:
                 key=f"download_text_{text_timestamp}"
             )
     
-    # Mostrar imagen
+    # Mostrar imagen (MEJORADO)
     if 'image_obj' in st.session_state.generated_content:
         with image_container:
             st.header("🖼️ Imagen Generada por Flux")
@@ -586,21 +730,44 @@ if st.session_state.generation_complete and st.session_state.generated_content:
             model = metadata.get('model', 'N/A')
             style = metadata.get('style', 'N/A')
             custom_prompt_used = metadata.get('custom_prompt', False)
+            intelligent_prompt = metadata.get('prompt_intelligent', False)
+            used_prompt = metadata.get('used_prompt', '')
             
-            # Descripción mejorada
-            prompt_info = "Con prompt personalizado" if custom_prompt_used else "Generado automáticamente"
-            caption = f"Generada con {model} • {width}x{height}px • Estilo: {style} • {prompt_info}"
+            # Descripción mejorada con información del tipo de prompt
+            if custom_prompt_used:
+                prompt_info = "Con prompt personalizado"
+                prompt_color = "🟢"
+            elif intelligent_prompt:
+                prompt_info = "Prompt inteligente por Claude"
+                prompt_color = "🔵"
+            else:
+                prompt_info = "Prompt básico automático"
+                prompt_color = "🟡"
+            
+            caption = f"Generada con {model} • {width}x{height}px • Estilo: {style} • {prompt_color} {prompt_info}"
             
             st.image(
                 st.session_state.generated_content['image_obj'], 
                 caption=caption
             )
             
+            # Información del prompt usado
+            with st.expander("🔍 Ver prompt utilizado para la imagen"):
+                st.code(used_prompt, language="text")
+                if intelligent_prompt:
+                    st.success("🧠 Este prompt fue generado por Claude analizando todo el contenido del texto")
+                elif custom_prompt_used:
+                    st.info("👤 Este fue tu prompt personalizado")
+                else:
+                    st.warning("⚙️ Prompt básico generado automáticamente")
+            
             # Información adicional
             if custom_prompt_used:
                 st.success("✨ Se utilizó tu prompt personalizado para la imagen")
+            elif intelligent_prompt:
+                st.success("🤖 Claude analizó el contenido completo para generar un prompt visual optimizado")
             else:
-                st.info("🤖 Se generó automáticamente basándose en el contenido del texto")
+                st.info("⚙️ Se usó el método básico de generación de prompt")
             
             # Botón para descargar imagen con key única
             img_timestamp = metadata.get('timestamp', int(time.time()))
@@ -635,7 +802,7 @@ if st.session_state.generation_complete and st.session_state.generated_content:
                 key=f"download_audio_{audio_timestamp}"
             )
     
-    # Estadísticas finales
+    # Estadísticas finales (MEJORADAS)
     with st.expander("📈 Estadísticas de generación"):
         col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
         
@@ -652,7 +819,12 @@ if st.session_state.generation_complete and st.session_state.generated_content:
         with col_stats3:
             st.metric("Pasos Flux", image_meta.get('steps', 0))
         with col_stats4:
-            prompt_type = "Personalizado" if image_meta.get('custom_prompt', False) else "Automático"
+            if image_meta.get('custom_prompt', False):
+                prompt_type = "Personalizado"
+            elif image_meta.get('prompt_intelligent', False):
+                prompt_type = "Inteligente"
+            else:
+                prompt_type = "Básico"
             st.metric("Tipo de prompt", prompt_type)
     
     # Botón para limpiar y empezar de nuevo
@@ -664,7 +836,7 @@ if st.session_state.generation_complete and st.session_state.generated_content:
 # Información adicional en el footer
 st.markdown("---")
 
-# Tabs informativas
+# Tabs informativas (ACTUALIZADAS)
 tab1, tab2, tab3, tab4 = st.tabs(["📚 Instrucciones", "🔑 APIs", "💡 Consejos", "⚡ Modelos"])
 
 with tab1:
@@ -672,10 +844,15 @@ with tab1:
     ### Cómo usar la aplicación:
     
     1. **🔧 Configura las APIs**: Ingresa tus claves en la barra lateral
-    2. **✍️ Escribe tu prompt**: Describe detalladamente qué quieres generar  
+    2. **✏️ Escribe tu prompt**: Describe detalladamente qué quieres generar  
     3. **📋 Selecciona el tipo**: Elige entre ejercicio, artículo, texto o relato
     4. **⚙️ Personaliza**: Ajusta modelos y configuraciones según tus necesidades
     5. **🚀 Genera**: Presiona el botón y espera tu contenido multimedia completo
+    
+    ### 🆕 **Nuevo Sistema Inteligente:**
+    - Claude analiza **todo** tu contenido generado para crear prompts visuales perfectos
+    - Adaptación automática según el tipo de contenido (educativo, informativo, narrativo)
+    - Prompts optimizados en inglés para mejor calidad en Flux
     """)
 
 with tab2:
@@ -685,7 +862,7 @@ with tab2:
     **🧠 Anthropic API (Claude)**
     - Regístrate en: https://console.anthropic.com/
     - Crea una API key en tu dashboard
-    - Usado para generación de texto de alta calidad
+    - Usado para generación de texto Y análisis para prompts visuales
     
     **🎨 Black Forest Labs API (Flux)**
     - Regístrate en: https://api.bfl.ml/
@@ -708,10 +885,10 @@ with tab3:
     - Especifica el tono deseado (formal, casual, técnico, etc.)
     
     **🖼️ Para las imágenes:**
-    - **Automático**: Se genera basándose en el contenido del texto
-    - **Personalizado**: Describe exactamente qué quieres ver en la imagen
+    - **🤖 Automático Inteligente (RECOMENDADO)**: Claude analiza todo el contenido y genera el prompt perfecto
+    - **👤 Personalizado**: Escribe tu prompt EN INGLÉS si quieres control total
     - **Estilos disponibles**: Photorealistic, Digital-art, Cinematic, Documentary, Portrait
-    - **Ejemplos de prompts buenos**: "Una profesora explicando matemáticas en un aula moderna con tecnología", "Paneles solares en un campo al atardecer con montañas de fondo"
+    - **El nuevo sistema** entiende el contexto completo, no solo las primeras palabras
     
     **🎵 Para el audio:**
     - El texto se limpia automáticamente para TTS
@@ -726,15 +903,21 @@ with tab4:
     **🧠 Claude Sonnet 4 (2025)**
     - Modelo más avanzado de Anthropic
     - claude-sonnet-4-20250514: La versión más reciente
-    - Excelente razonamiento, creatividad y contexto largo
+    - Ahora usado para: Generación de texto + Análisis inteligente para prompts visuales
     
     **🎨 Flux (Black Forest Labs)**
     - **Flux Pro 1.1**: Control total de dimensiones, excelente calidad
     - **Flux Pro 1.1 Ultra**: Máxima calidad, aspect ratios automáticos
-    - Generación de imágenes de última generación
+    - Optimizado para recibir prompts en inglés
     
     **🗣️ OpenAI TTS-1-HD**
     - Modelo de alta definición para síntesis de voz
     - 6 voces diferentes con personalidades únicas
     - Calidad de audio profesional
+    
+    ### 🆕 **Mejoras en esta versión:**
+    - **Sistema de prompts inteligente**: Claude analiza el contenido completo
+    - **Mejor coherencia**: Imágenes perfectamente alineadas con el texto
+    - **Prompts en inglés**: Optimización automática para Flux
+    - **Información detallada**: Transparencia total sobre qué prompt se usó
     """)
