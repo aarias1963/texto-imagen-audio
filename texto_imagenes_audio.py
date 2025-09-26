@@ -298,8 +298,7 @@ REGLAS IMPORTANTES:
 
 ESTRUCTURA DEL PROMPT:
 [Descripción visual principal] + [Estilo técnico] + [Calidad/Resolución] + [Elementos compositivos]"""
-
-        # Instrucciones específicas por tipo de contenido (AMPLIADAS)
+# Instrucciones específicas por tipo de contenido (AMPLIADAS)
         content_instructions = {
             "ejercicio": """Analiza este ejercicio educativo y crea un prompt visual que represente:
 - La materia/tema principal del ejercicio
@@ -470,9 +469,60 @@ Por favor, responde ÚNICAMENTE con el prompt visual en inglés optimizado para 
         st.error(f"Error en la generación de prompt visual con Claude: {str(e)}")
         return None
 
-# Interfaz principal
+# ===== INTERFAZ PRINCIPAL CON COLUMNAS CORREGIDAS =====
+# Crear las columnas PRIMERO, antes de definir el contenido
 col1, col2 = st.columns([2, 1])
 
+# ===== COLUMNA DERECHA (col2) - MOVER ARRIBA PARA ALINEAR =====
+with col2:
+    st.header("🚀 Generación")
+    
+    # Información del modelo mejorada
+    st.info(f"🧠 **Claude**: {claude_model}\n\n🎨 **Flux**: {flux_model}\n\n🗣️ **Voz**: {voice_model}")
+    
+    # Información sobre el sistema de prompts
+    st.success("🔬 **Sistema Inteligente:**\n\nClaude analiza todo tu contenido para generar prompts visuales perfectamente adaptados")
+    
+    # Información sobre las nuevas tipologías
+    with st.expander("🆕 Nuevas tipologías disponibles"):
+        st.markdown("""
+        **🗣️ Diálogos situacionales**: Conversaciones naturales (6-10 líneas)
+        
+        **🎭 Artículo cultural**: Tradiciones y costumbres (120-150 palabras)
+        
+        **📺 Artículo de actualidad**: Noticias simplificadas (80-120 palabras)
+        
+        **👤 Artículo biográfico**: Mini-biografías (100-120 palabras)
+        
+        **📱 Clip de noticias**: 5 noticias ultrabreves (40-60 palabras c/u)
+        
+        **💭 Pregunta de debate**: Dilemas para conversación (2-3 frases)
+        
+        **👨‍🍳 Receta de cocina**: Recetas sencillas (80-100 palabras)
+        
+        **📲 Post de redes sociales**: Contenido informal (40-60 palabras)
+        
+        **🧠 Trivia cultural**: 6 preguntas de cultura general
+        """)
+    
+    # Botón principal
+    generate_button = st.button(
+        "🎯 Generar Contenido Multimedia",
+        type="primary",
+        use_container_width=True
+    )
+    
+    # Validación de APIs
+    apis_ready = all([anthropic_api_key, bfl_api_key, openai_api_key])
+    if not apis_ready:
+        missing_apis = []
+        if not anthropic_api_key: missing_apis.append("Anthropic")
+        if not bfl_api_key: missing_apis.append("Black Forest Labs")  
+        if not openai_api_key: missing_apis.append("OpenAI")
+        
+        st.warning(f"⚠️ APIs faltantes: {', '.join(missing_apis)}")
+
+# ===== COLUMNA IZQUIERDA (col1) - CONTENIDO PRINCIPAL =====
 with col1:
     st.header("📝 Generación de Contenido")
     
@@ -526,7 +576,7 @@ Ejemplos:
         height=120,
         help="Si especificas un prompt EN INGLÉS, este se usará en lugar del generado automáticamente por Claude"
     )
-    # Función para optimizar prompt para Flux (ahora simplificada ya que Claude genera el prompt completo)
+# Función para optimizar prompt para Flux (ahora simplificada ya que Claude genera el prompt completo)
 def optimize_prompt_for_flux(prompt, style="photorealistic"):
     """Aplica optimizaciones finales al prompt ya generado por Claude"""
     try:
@@ -765,58 +815,7 @@ def generate_audio(text: str, voice: str, api_key: str) -> Optional[bytes]:
         st.error(f"Error en la generación de audio: {str(e)}")
         return None
 
-# Interfaz principal
-col1, col2 = st.columns([2, 1])
-
-with col2:
-    st.header("🚀 Generación")
-    
-    # Información del modelo mejorada
-    st.info(f"🧠 **Claude**: {claude_model}\n\n🎨 **Flux**: {flux_model}\n\n🗣️ **Voz**: {voice_model}")
-    
-    # Información sobre el sistema de prompts
-    st.success("🔬 **Sistema Inteligente:**\n\nClaude analiza todo tu contenido para generar prompts visuales perfectamente adaptados")
-    
-    # Información sobre las nuevas tipologías
-    with st.expander("🆕 Nuevas tipologías disponibles"):
-        st.markdown("""
-        **🗣️ Diálogos situacionales**: Conversaciones naturales (6-10 líneas)
-        
-        **🎭 Artículo cultural**: Tradiciones y costumbres (120-150 palabras)
-        
-        **📺 Artículo de actualidad**: Noticias simplificadas (80-120 palabras)
-        
-        **👤 Artículo biográfico**: Mini-biografías (100-120 palabras)
-        
-        **📱 Clip de noticias**: 5 noticias ultrabreves (40-60 palabras c/u)
-        
-        **💭 Pregunta de debate**: Dilemas para conversación (2-3 frases)
-        
-        **👨‍🍳 Receta de cocina**: Recetas sencillas (80-100 palabras)
-        
-        **📲 Post de redes sociales**: Contenido informal (40-60 palabras)
-        
-        **🧠 Trivia cultural**: 6 preguntas de cultura general
-        """)
-    
-    # Botón principal
-    generate_button = st.button(
-        "🎯 Generar Contenido Multimedia",
-        type="primary",
-        use_container_width=True
-    )
-    
-    # Validación de APIs
-    apis_ready = all([anthropic_api_key, bfl_api_key, openai_api_key])
-    if not apis_ready:
-        missing_apis = []
-        if not anthropic_api_key: missing_apis.append("Anthropic")
-        if not bfl_api_key: missing_apis.append("Black Forest Labs")  
-        if not openai_api_key: missing_apis.append("OpenAI")
-        
-        st.warning(f"⚠️ APIs faltantes: {', '.join(missing_apis)}")
-
-# Proceso de generación (MEJORADO)
+# ===== PROCESO DE GENERACIÓN (MEJORADO) =====
 if generate_button and user_prompt:
     if not apis_ready:
         st.error("❌ Por favor, proporciona todas las claves de API necesarias.")
@@ -917,7 +916,7 @@ if generate_button and user_prompt:
             progress_bar.progress(0)
             status_text.text("❌ Generación fallida")
 
-# Mostrar contenido generado desde session state (MEJORADO)
+# ===== MOSTRAR CONTENIDO GENERADO DESDE SESSION STATE (MEJORADO) =====
 if st.session_state.generation_complete and st.session_state.generated_content:
     # Contenedores para resultados
     text_container = st.container()
@@ -1064,7 +1063,6 @@ if st.session_state.generation_complete and st.session_state.generated_content:
         
         text_meta = st.session_state.generated_content.get('text_metadata', {})
         image_meta = st.session_state.generated_content.get('image_metadata', {})
-        audio_meta = st.session_state.generated_content.get('audio_metadata', {})
         
         with col_stats1:
             st.metric("Palabras generadas", text_meta.get('word_count', 0))
@@ -1084,7 +1082,7 @@ if st.session_state.generation_complete and st.session_state.generated_content:
         st.session_state.generation_complete = False
         st.rerun()
 
-# Información adicional en el footer
+# ===== INFORMACIÓN ADICIONAL EN EL FOOTER =====
 st.markdown("---")
 
 # Tabs informativas (ACTUALIZADAS CON NUEVAS TIPOLOGÍAS)
@@ -1119,11 +1117,6 @@ with tab1:
     **📲 Post de redes sociales**: Contenido informal con emojis y hashtags
     
     **🧠 Trivia cultural**: Preguntas de cultura general con explicaciones
-    
-    ### 🔬 **Sistema Inteligente:**
-    - Claude analiza **todo** tu contenido generado para crear prompts visuales perfectos
-    - Adaptación específica para cada tipología de contenido
-    - Prompts optimizados en inglés para mejor calidad en Flux
     """)
 
 with tab2:
@@ -1207,24 +1200,9 @@ with tab4:
     - Mejor coherencia entre texto e imagen
     - Generación en inglés optimizada para Flux
     
-    **🎯 Adaptaciones por Tipología:**
-    - **Educativo** (ejercicios, trivia): Ambientes de aprendizaje
-    - **Cultural** (artículos culturales, biográficos): Elementos tradicionales
-    - **Conversacional** (diálogos, debates): Escenas de interacción social  
-    - **Gastronómico** (recetas): Cocinas y ingredientes apetitosos
-    - **Social** (posts de redes): Estética moderna y "instagrameable"
-    - **Informativo** (noticias, actualidad): Ambientes profesionales
-    
-    **📊 Información Detallada:**
-    - Transparencia total sobre qué prompt se usó
+    **🔧 Interfaz Mejorada:**
+    - ✅ **Alineación perfecta de columnas**
+    - Información organizada y clara
+    - Feedback detallado en tiempo real
     - Estadísticas específicas por tipología
-    - Feedback en tiempo real durante el proceso
-    - Indicadores visuales del tipo de generación
-    
-    ### 🔧 **Funcionalidades Técnicas:**
-    - **Sistema de fallback robusto**: Garantiza funcionamiento incluso si algo falla
-    - **Session state persistente**: No se pierde el contenido generado
-    - **Descarga individual**: Cada elemento por separado
-    - **Progress tracking**: Seguimiento detallado del proceso
-    - **Error handling**: Manejo inteligente de errores y timeouts
     """)
