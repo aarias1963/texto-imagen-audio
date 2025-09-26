@@ -96,7 +96,7 @@ def generate_text_claude(prompt: str, content_type: str, api_key: str, model: st
             "anthropic-version": "2023-06-01"
         }
         
-        # Prompts específicos y mejorados para Claude
+        # Prompts específicos y mejorados para Claude (AMPLIADOS)
         system_prompts = {
             "ejercicio": """Eres un experto educador con amplia experiencia pedagógica. Tu tarea es crear ejercicios educativos que sean:
 - Estructurados y progresivos
@@ -129,18 +129,123 @@ Formato: Libre, adaptado al tipo de texto solicitado.""",
 - Diálogos naturales y efectivos
 - Ritmo narrativo apropiado
 - Final satisfactorio
-Formato: Estructura narrativa clásica con introducción, desarrollo, clímax y desenlace."""
+Formato: Estructura narrativa clásica con introducción, desarrollo, clímax y desenlace.""",
+            
+            "diálogo situacional": """Eres un experto en creación de contenido educativo para idiomas. Tu tarea es crear diálogos situacionales que sean:
+- Naturales y auténticos
+- Apropiados para el contexto
+- Con vocabulario cotidiano útil
+- Breves pero completos (6-10 líneas)
+- Incluyan expresiones idiomáticas comunes
+Formato: Diálogo breve + lista de 5-7 expresiones clave con explicación.""",
+            
+            "artículo cultural": """Eres un escritor especializado en divulgación cultural. Tu contenido debe ser:
+- Informativo y atractivo (120-150 palabras)
+- Claro y accesible
+- Con ejemplos concretos
+- Que despierte interés cultural
+- Educativo pero entretenido
+Formato: Artículo divulgativo + glosario de 5 palabras clave.""",
+            
+            "artículo de actualidad": """Eres un periodista especializado en adaptar noticias para diferentes audiencias. Tu contenido debe ser:
+- Claro y directo (80-120 palabras)
+- Con lenguaje sencillo
+- Bien estructurado
+- Objetivo y factual
+- Fácil de comprender
+Formato: Noticia simplificada + 2-3 preguntas de comprensión.""",
+            
+            "artículo biográfico": """Eres un biógrafo especializado en crear perfiles concisos. Tu contenido debe incluir:
+- Información esencial (100-120 palabras)
+- Fechas y logros clave
+- Relevancia cultural o histórica
+- Datos verificables
+- Un elemento curioso o interesante
+Formato: Mini-biografía + dato curioso final.""",
+            
+            "clip de noticias": """Eres un editor de noticias especializado en contenido ultrabreve. Tu tarea es crear:
+- Textos muy concisos (40-60 palabras por noticia)
+- Información directa y clara
+- Vocabulario comprensible
+- Estilo telegráfico pero completo
+- 5 noticias por tema
+Formato: 5 clips de noticias + frase resumen simple.""",
+            
+            "pregunta de debate": """Eres un moderador experto en generar debates constructivos. Tu contenido debe:
+- Plantear dilemas interesantes
+- Ser breve pero provocativo (2-3 frases)
+- Usar lenguaje sencillo
+- Estimular múltiples perspectivas
+- Terminar con pregunta abierta
+Formato: Introducción del tema + pregunta de debate abierta.""",
+            
+            "receta de cocina": """Eres un chef educador especializado en recetas sencillas. Tu contenido debe incluir:
+- Instrucciones claras (80-100 palabras)
+- Lista de ingredientes específica
+- Pasos en imperativo
+- Técnicas básicas explicadas
+- Consejos útiles
+Formato: Lista de ingredientes + 3-4 pasos de preparación.""",
+            
+            "post de redes sociales": """Eres un community manager especializado en contenido educativo para redes. Tu contenido debe ser:
+- Muy breve (40-60 palabras)
+- Tono informal y cercano
+- Incluir emojis apropiados
+- 1-2 hashtags relevantes
+- Lenguaje coloquial auténtico
+Formato: Post informal + traducción de expresiones coloquiales.""",
+            
+            "trivia cultural": """Eres un creador de contenido educativo especializado en preguntas de cultura general. Tu contenido debe incluir:
+- 6 preguntas de opción múltiple
+- 4 opciones (A-D) por pregunta
+- Respuesta correcta marcada
+- Explicación breve de cada respuesta
+- Nivel apropiado de dificultad
+Formato: Batería de preguntas + explicaciones de respuestas correctas."""
         }
+        
+        # Instrucciones específicas según el tipo de contenido
+        def get_content_specific_instructions(content_type):
+            instructions = {
+                "ejercicio": "Crea un ejercicio educativo completo con estructura clara.",
+                
+                "artículo": "Redacta un artículo informativo completo y bien estructurado.",
+                
+                "texto": "Crea un texto apropiado para el tema y propósito indicado.",
+                
+                "relato": "Escribe un relato completo con estructura narrativa clásica.",
+                
+                "diálogo situacional": """Escribe un diálogo breve (6–10 líneas) entre dos personajes en el contexto indicado. Incluye expresiones naturales del idioma, vocabulario cotidiano y un tono realista. Añade debajo una lista con 5–7 expresiones clave con traducción sencilla.""",
+                
+                "artículo cultural": """Redacta un artículo cultural de 120–150 palabras sobre el tema indicado. Usa un estilo divulgativo, frases cortas y vocabulario accesible. Añade un pequeño glosario de 5 palabras con definición sencilla.""",
+                
+                "artículo de actualidad": """Escribe un artículo breve de actualidad de 80–120 palabras sobre el tema/noticia indicada. Usa un estilo sencillo y claro. Añade 2–3 preguntas de comprensión al final.""",
+                
+                "artículo biográfico": """Crea una biografía breve de 100–120 palabras sobre la persona indicada. Incluye 3–4 hechos clave (fechas, logros, importancia). Añade una línea final con 'Dato curioso'.""",
+                
+                "clip de noticias": """Escribe un clip de 5 noticias en 40–60 palabras cada una sobre el tema indicado. Debe ser directo, claro y con vocabulario comprensible. Añade una frase con la idea principal en lenguaje aún más simple.""",
+                
+                "pregunta de debate": """Plantea una pregunta de debate en 2–3 frases sobre el tema indicado. El texto debe introducir la situación brevemente y terminar con una pregunta abierta. Nivel de idioma sencillo, para fomentar conversación.""",
+                
+                "receta de cocina": """Escribe una receta breve de 80–100 palabras sobre cómo preparar el plato indicado. Incluye una lista corta de ingredientes y 3–4 pasos en imperativo (ej.: corta, mezcla, añade).""",
+                
+                "post de redes sociales": """Crea un post de redes sociales de 40–60 palabras sobre el tema indicado. Usa tono informal, emojis y 1–2 hashtags. Añade debajo la traducción literal de 3 expresiones coloquiales que aparezcan.""",
+                
+                "trivia cultural": """Escribe una batería de 6 preguntas de trivial cultural sobre el tema indicado. Ofrece 4 opciones (A–D) y marca la correcta. Añade una explicación breve (1 frase) de por qué la respuesta es la correcta."""
+            }
+            return instructions.get(content_type, instructions["texto"])
         
         user_message = f"""Crea un {content_type} sobre: {prompt}
 
+{get_content_specific_instructions(content_type)}
+
 Por favor, asegúrate de que el contenido sea:
-1. Completo y bien desarrollado
+1. Completo y bien desarrollado según las especificaciones
 2. Apropiado para el tipo de contenido solicitado
 3. Interesante y bien escrito
 4. Listo para ser presentado como contenido final
 
-El {content_type} debe tener la extensión apropiada para su tipo y propósito."""
+El {content_type} debe seguir exactamente el formato y extensión indicados."""
         
         data = {
             "model": model,
@@ -194,7 +299,7 @@ REGLAS IMPORTANTES:
 ESTRUCTURA DEL PROMPT:
 [Descripción visual principal] + [Estilo técnico] + [Calidad/Resolución] + [Elementos compositivos]"""
 
-        # Instrucciones específicas por tipo de contenido
+        # Instrucciones específicas por tipo de contenido (AMPLIADAS)
         content_instructions = {
             "ejercicio": """Analiza este ejercicio educativo y crea un prompt visual que represente:
 - La materia/tema principal del ejercicio
@@ -230,7 +335,88 @@ Enfócate en la esencia visual del contenido.""",
 - El mood/atmósfera del relato
 - Elementos narrativos clave visualmente
 
-Crea una escena cinematográfica que represente el relato."""
+Crea una escena cinematográfica que represente el relato.""",
+            
+            "diálogo situacional": """Analiza este diálogo situacional y crea un prompt visual que muestre:
+- El contexto/lugar donde ocurre la conversación
+- Dos personas conversando de manera natural
+- El ambiente apropiado (cafetería, aeropuerto, oficina, etc.)
+- Elementos que refuercen el contexto situacional
+- Una escena realista y cotidiana
+
+Representa visualmente la situación del diálogo.""",
+            
+            "artículo cultural": """Analiza este artículo cultural y crea un prompt visual que represente:
+- La tradición, costumbre o elemento cultural principal
+- Escenas típicas relacionadas con la cultura descrita
+- Personas participando en actividades culturales
+- Elementos visuales representativos (objetos, lugares, vestimentas)
+- Un ambiente que refleje la identidad cultural
+
+Captura la esencia visual de la cultura descrita.""",
+            
+            "artículo de actualidad": """Analiza este artículo de actualidad y crea un prompt visual que muestre:
+- El tema principal de la noticia
+- Elementos visuales que ilustren la información
+- Un contexto actual y contemporáneo
+- Personas, lugares u objetos relacionados con la noticia
+- Una composición informativa y clara
+
+Representa visualmente el contenido noticioso.""",
+            
+            "artículo biográfico": """Analiza este artículo biográfico y crea un prompt visual que incluya:
+- Un retrato o representación de la época de la persona
+- Elementos relacionados con sus logros principales
+- El contexto histórico o profesional relevante
+- Objetos o símbolos asociados con su trabajo/vida
+- Una composición que honre su legado
+
+Crea una representación visual dignificante del personaje.""",
+            
+            "clip de noticias": """Analiza estos clips de noticias y crea un prompt visual que muestre:
+- Una composición estilo noticiero o medio de comunicación
+- Elementos gráficos informativos modernos
+- Un ambiente de sala de redacción o estudio de noticias
+- Personas trabajando en medios de comunicación
+- Una estética profesional y contemporánea
+
+Representa el mundo del periodismo y las noticias.""",
+            
+            "pregunta de debate": """Analiza esta pregunta de debate y crea un prompt visual que represente:
+- Personas en situación de diálogo o debate
+- Un ambiente apropiado para la discusión (aula, mesa redonda, etc.)
+- Elementos que sugieran intercambio de ideas
+- Una composición que invite al diálogo
+- Diversidad de perspectivas visuales
+
+Crea una escena que fomente la conversación.""",
+            
+            "receta de cocina": """Analiza esta receta y crea un prompt visual que muestre:
+- Los ingredientes principales de la receta
+- Una cocina acogedora y bien equipada
+- El proceso de cocinar o el plato terminado
+- Utensilios de cocina apropiados
+- Una presentación apetitosa y profesional
+
+Representa visualmente la experiencia culinaria.""",
+            
+            "post de redes sociales": """Analiza este post y crea un prompt visual que capture:
+- El estilo visual típico de redes sociales
+- Elementos modernos y contemporáneos
+- Una estética atractiva y "instagrameable"
+- Personas usando dispositivos móviles o en situaciones sociales
+- Colores vibrantes y composición dinámica
+
+Crea una imagen perfecta para redes sociales.""",
+            
+            "trivia cultural": """Analiza esta trivia cultural y crea un prompt visual que represente:
+- Un ambiente de quiz o juego educativo
+- Elementos relacionados con el tema de las preguntas
+- Personas participando en actividades de conocimiento
+- Libros, mapas, o símbolos culturales relevantes
+- Una composición educativa y atractiva
+
+Representa el mundo del conocimiento y la cultura general."""
         }
         
         # Adaptaciones por estilo visual
@@ -283,7 +469,64 @@ Por favor, responde ÚNICAMENTE con el prompt visual en inglés optimizado para 
     except Exception as e:
         st.error(f"Error en la generación de prompt visual con Claude: {str(e)}")
         return None
-        # Función para optimizar prompt para Flux (ahora simplificada ya que Claude genera el prompt completo)
+
+# Interfaz principal
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.header("📝 Generación de Contenido")
+    
+    # Input del usuario con ejemplos ampliados
+    user_prompt = st.text_area(
+        "Describe tu idea:",
+        placeholder="""Ejemplos por tipo de contenido:
+
+🎓 Ejercicio: "Funciones lineales para estudiantes de secundaria"
+📰 Artículo: "El futuro de la energía renovable" 
+📚 Texto: "Guía de productividad personal"
+📖 Relato: "Un gato que viaja en el tiempo"
+
+🗣️ Diálogo situacional: "Pidiendo direcciones en el aeropuerto"
+🎭 Artículo cultural: "La celebración del Día de Muertos en México"
+📺 Artículo de actualidad: "Nuevas medidas ambientales aprobadas"
+👤 Artículo biográfico: "Frida Kahlo, pintora mexicana"
+
+📱 Clip de noticias: "Avances tecnológicos de esta semana"
+💭 Pregunta de debate: "¿Es ético usar inteligencia artificial en educación?"
+👨‍🍳 Receta de cocina: "Cómo hacer tacos al pastor auténticos"
+📲 Post de redes sociales: "Consejos para ser más sostenible"
+🧠 Trivia cultural: "Conocimientos sobre arte latinoamericano" """,
+        height=150
+    )
+    
+    # Tipo de contenido (AMPLIADO)
+    content_type = st.selectbox(
+        "Tipo de contenido a generar:",
+        ["ejercicio", "artículo", "texto", "relato", "diálogo situacional", 
+         "artículo cultural", "artículo de actualidad", "artículo biográfico", 
+         "clip de noticias", "pregunta de debate", "receta de cocina", 
+         "post de redes sociales", "trivia cultural"],
+        help="Selecciona el tipo que mejor se adapte a tu necesidad"
+    )
+    
+    # Prompt opcional para imagen
+    st.subheader("🖼️ Personalización de Imagen (Opcional)")
+    image_prompt = st.text_area(
+        "Prompt personalizado para la imagen (en inglés):",
+        placeholder="""Opcional: Describe específicamente qué imagen quieres generar EN INGLÉS.
+Si lo dejas vacío, Claude analizará el contenido y generará automáticamente un prompt optimizado.
+
+Ejemplos:
+• A person studying with mathematics books in a modern library, natural lighting, photorealistic
+• A futuristic landscape with solar panels and wind turbines at sunset, cinematic composition
+• An orange cat wearing a steampunk hat traveling in a time machine, digital art style
+• Two people having a conversation at an airport terminal, documentary style
+• Traditional Day of the Dead altar with colorful decorations, cultural photography
+• A modern newsroom with journalists working, professional lighting""",
+        height=120,
+        help="Si especificas un prompt EN INGLÉS, este se usará en lugar del generado automáticamente por Claude"
+    )
+    # Función para optimizar prompt para Flux (ahora simplificada ya que Claude genera el prompt completo)
 def optimize_prompt_for_flux(prompt, style="photorealistic"):
     """Aplica optimizaciones finales al prompt ya generado por Claude"""
     try:
@@ -525,42 +768,6 @@ def generate_audio(text: str, voice: str, api_key: str) -> Optional[bytes]:
 # Interfaz principal
 col1, col2 = st.columns([2, 1])
 
-with col1:
-    st.header("📝 Generación de Contenido")
-    
-    # Input del usuario con ejemplos
-    user_prompt = st.text_area(
-        "Describe tu idea:",
-        placeholder="""Ejemplos:
-• Un tutorial sobre machine learning para principiantes
-• Un artículo sobre el futuro de la energía renovable  
-• Un cuento sobre un gato que viaja en el tiempo
-• Ejercicios de matemáticas para secundaria sobre funciones""",
-        height=120
-    )
-    
-    # Tipo de contenido
-    content_type = st.selectbox(
-        "Tipo de contenido a generar:",
-        ["ejercicio", "artículo", "texto", "relato"],
-        help="Selecciona el tipo que mejor se adapte a tu necesidad"
-    )
-    
-    # Prompt opcional para imagen
-    st.subheader("🖼️ Personalización de Imagen (Opcional)")
-    image_prompt = st.text_area(
-        "Prompt personalizado para la imagen (en inglés):",
-        placeholder="""Opcional: Describe específicamente qué imagen quieres generar EN INGLÉS.
-Si lo dejas vacío, Claude analizará el contenido y generará automáticamente un prompt optimizado.
-
-Ejemplos:
-• A person studying with mathematics books in a modern library, natural lighting, photorealistic
-• A futuristic landscape with solar panels and wind turbines at sunset, cinematic composition
-• An orange cat wearing a steampunk hat traveling in a time machine, digital art style""",
-        height=100,
-        help="Si especificas un prompt EN INGLÉS, este se usará en lugar del generado automáticamente por Claude"
-    )
-
 with col2:
     st.header("🚀 Generación")
     
@@ -568,7 +775,29 @@ with col2:
     st.info(f"🧠 **Claude**: {claude_model}\n\n🎨 **Flux**: {flux_model}\n\n🗣️ **Voz**: {voice_model}")
     
     # Información sobre el sistema de prompts
-    st.success("🔬 **Nuevo Sistema Inteligente:**\n\nClaude analiza todo tu contenido para generar prompts visuales perfectamente adaptados")
+    st.success("🔬 **Sistema Inteligente:**\n\nClaude analiza todo tu contenido para generar prompts visuales perfectamente adaptados")
+    
+    # Información sobre las nuevas tipologías
+    with st.expander("🆕 Nuevas tipologías disponibles"):
+        st.markdown("""
+        **🗣️ Diálogos situacionales**: Conversaciones naturales (6-10 líneas)
+        
+        **🎭 Artículo cultural**: Tradiciones y costumbres (120-150 palabras)
+        
+        **📺 Artículo de actualidad**: Noticias simplificadas (80-120 palabras)
+        
+        **👤 Artículo biográfico**: Mini-biografías (100-120 palabras)
+        
+        **📱 Clip de noticias**: 5 noticias ultrabreves (40-60 palabras c/u)
+        
+        **💭 Pregunta de debate**: Dilemas para conversación (2-3 frases)
+        
+        **👨‍🍳 Receta de cocina**: Recetas sencillas (80-100 palabras)
+        
+        **📲 Post de redes sociales**: Contenido informal (40-60 palabras)
+        
+        **🧠 Trivia cultural**: 6 preguntas de cultura general
+        """)
     
     # Botón principal
     generate_button = st.button(
@@ -602,7 +831,7 @@ if generate_button and user_prompt:
         
         try:
             # Paso 1: Generar texto con Claude Sonnet 4
-            status_text.text("🧠 Generando contenido con Claude Sonnet 4...")
+            status_text.text(f"🧠 Generando {content_type} con Claude Sonnet 4...")
             progress_bar.progress(15)
             
             generated_text = generate_text_claude(
@@ -623,7 +852,7 @@ if generate_button and user_prompt:
                 progress_bar.progress(30)
                 
                 # Paso 2: Generar imagen con Flux (MEJORADO)
-                status_text.text("🎨 Analizando contenido y generando imagen con Flux...")
+                status_text.text(f"🎨 Analizando {content_type} y generando imagen con Flux...")
                 progress_bar.progress(40)
                 
                 generated_image, used_prompt = generate_image_flux(
@@ -695,26 +924,53 @@ if st.session_state.generation_complete and st.session_state.generated_content:
     image_container = st.container()
     audio_container = st.container()
     
-    # Mostrar texto
+    # Mostrar texto (MEJORADO para nuevas tipologías)
     if 'text' in st.session_state.generated_content:
         with text_container:
-            st.header("📄 Contenido Generado por Claude")
+            metadata = st.session_state.generated_content.get('text_metadata', {})
+            content_type_display = metadata.get('content_type', 'texto')
+            
+            # Emojis por tipo de contenido
+            content_emojis = {
+                "ejercicio": "📚", "artículo": "📰", "texto": "📝", "relato": "📖",
+                "diálogo situacional": "🗣️", "artículo cultural": "🎭", 
+                "artículo de actualidad": "📺", "artículo biográfico": "👤",
+                "clip de noticias": "📱", "pregunta de debate": "💭",
+                "receta de cocina": "👨‍🍳", "post de redes sociales": "📲",
+                "trivia cultural": "🧠"
+            }
+            
+            emoji = content_emojis.get(content_type_display, "📄")
+            st.header(f"{emoji} {content_type_display.title()} Generado por Claude")
+            
             st.markdown(st.session_state.generated_content['text'])
             
             # Métricas del texto
-            metadata = st.session_state.generated_content.get('text_metadata', {})
             word_count = metadata.get('word_count', 0)
             char_count = metadata.get('char_count', 0)
-            content_type = metadata.get('content_type', 'texto')
             
-            st.caption(f"📊 {word_count} palabras • {char_count} caracteres")
+            # Información específica por tipo
+            type_info = {
+                "diálogo situacional": f"Conversación de {word_count} palabras con expresiones clave",
+                "artículo cultural": f"Artículo cultural de {word_count} palabras con glosario",
+                "artículo de actualidad": f"Noticia simplificada de {word_count} palabras con preguntas",
+                "artículo biográfico": f"Biografía de {word_count} palabras con dato curioso",
+                "clip de noticias": f"5 clips de noticias en {word_count} palabras total",
+                "pregunta de debate": f"Pregunta de debate en {word_count} palabras",
+                "receta de cocina": f"Receta de {word_count} palabras con ingredientes y pasos",
+                "post de redes sociales": f"Post de {word_count} palabras con emojis y hashtags",
+                "trivia cultural": f"6 preguntas de trivia con {word_count} palabras"
+            }
+            
+            display_info = type_info.get(content_type_display, f"📊 {word_count} palabras • {char_count} caracteres")
+            st.caption(display_info)
             
             # Botón para descargar texto con key única
             text_timestamp = metadata.get('timestamp', int(time.time()))
             st.download_button(
                 label="📥 Descargar Texto",
                 data=st.session_state.generated_content['text'],
-                file_name=f"{content_type}_claude_{text_timestamp}.txt",
+                file_name=f"{content_type_display.replace(' ', '_')}_claude_{text_timestamp}.txt",
                 mime="text/plain",
                 key=f"download_text_{text_timestamp}"
             )
@@ -819,13 +1075,8 @@ if st.session_state.generation_complete and st.session_state.generated_content:
         with col_stats3:
             st.metric("Pasos Flux", image_meta.get('steps', 0))
         with col_stats4:
-            if image_meta.get('custom_prompt', False):
-                prompt_type = "Personalizado"
-            elif image_meta.get('prompt_intelligent', False):
-                prompt_type = "Inteligente"
-            else:
-                prompt_type = "Básico"
-            st.metric("Tipo de prompt", prompt_type)
+            content_type = text_meta.get('content_type', 'texto')
+            st.metric("Tipo contenido", content_type.title())
     
     # Botón para limpiar y empezar de nuevo
     if st.button("🔄 Generar Nuevo Contenido", type="secondary"):
@@ -836,7 +1087,7 @@ if st.session_state.generation_complete and st.session_state.generated_content:
 # Información adicional en el footer
 st.markdown("---")
 
-# Tabs informativas (ACTUALIZADAS)
+# Tabs informativas (ACTUALIZADAS CON NUEVAS TIPOLOGÍAS)
 tab1, tab2, tab3, tab4 = st.tabs(["📚 Instrucciones", "🔑 APIs", "💡 Consejos", "⚡ Modelos"])
 
 with tab1:
@@ -845,13 +1096,33 @@ with tab1:
     
     1. **🔧 Configura las APIs**: Ingresa tus claves en la barra lateral
     2. **✏️ Escribe tu prompt**: Describe detalladamente qué quieres generar  
-    3. **📋 Selecciona el tipo**: Elige entre ejercicio, artículo, texto o relato
+    3. **📋 Selecciona el tipo**: Ahora con **13 tipologías** diferentes disponibles
     4. **⚙️ Personaliza**: Ajusta modelos y configuraciones según tus necesidades
     5. **🚀 Genera**: Presiona el botón y espera tu contenido multimedia completo
     
-    ### 🆕 **Nuevo Sistema Inteligente:**
+    ### 🆕 **Nuevas tipologías añadidas:**
+    
+    **🗣️ Diálogos situacionales**: Conversaciones naturales en contextos específicos
+    
+    **🎭 Artículo cultural**: Tradiciones, costumbres y elementos culturales
+    
+    **📺 Artículo de actualidad**: Noticias adaptadas y simplificadas
+    
+    **👤 Artículo biográfico**: Mini-biografías con datos curiosos
+    
+    **📱 Clip de noticias**: 5 noticias ultrabreves estilo teletipo
+    
+    **💭 Pregunta de debate**: Dilemas para estimular conversación
+    
+    **👨‍🍳 Receta de cocina**: Recetas paso a paso con ingredientes
+    
+    **📲 Post de redes sociales**: Contenido informal con emojis y hashtags
+    
+    **🧠 Trivia cultural**: Preguntas de cultura general con explicaciones
+    
+    ### 🔬 **Sistema Inteligente:**
     - Claude analiza **todo** tu contenido generado para crear prompts visuales perfectos
-    - Adaptación automática según el tipo de contenido (educativo, informativo, narrativo)
+    - Adaptación específica para cada tipología de contenido
     - Prompts optimizados en inglés para mejor calidad en Flux
     """)
 
@@ -862,17 +1133,17 @@ with tab2:
     **🧠 Anthropic API (Claude)**
     - Regístrate en: https://console.anthropic.com/
     - Crea una API key en tu dashboard
-    - Usado para generación de texto Y análisis para prompts visuales
+    - Usado para: Generación de todas las tipologías de texto + Análisis para prompts visuales
     
     **🎨 Black Forest Labs API (Flux)**
     - Regístrate en: https://api.bfl.ml/
     - Obtén tu API key del panel de control  
-    - Usado para generación de imágenes de última generación
+    - Usado para generación de imágenes adaptadas a cada tipo de contenido
     
     **🗣️ OpenAI API (TTS)**
     - Regístrate en: https://platform.openai.com/
     - Crea una API key en tu cuenta
-    - Usado para conversión de texto a voz
+    - Usado para conversión de texto a voz (funciona con todas las tipologías)
     """)
 
 with tab3:
@@ -880,20 +1151,26 @@ with tab3:
     ### Consejos para mejores resultados:
     
     **📝 Para el texto:**
-    - Sé específico y detallado en tu prompt
-    - Incluye el contexto y audiencia objetivo
-    - Especifica el tono deseado (formal, casual, técnico, etc.)
+    - **Sé específico** según la tipología elegida
+    - **Ejemplos por tipo:**
+      - Diálogos: "Pidiendo direcciones en el aeropuerto de Madrid"
+      - Cultural: "La tradición del flamenco en Andalucía"
+      - Recetas: "Cómo hacer gazpacho andaluz tradicional"
+      - Trivia: "Preguntas sobre arte latinoamericano contemporáneo"
     
     **🖼️ Para las imágenes:**
-    - **🤖 Automático Inteligente (RECOMENDADO)**: Claude analiza todo el contenido y genera el prompt perfecto
-    - **👤 Personalizado**: Escribe tu prompt EN INGLÉS si quieres control total
-    - **Estilos disponibles**: Photorealistic, Digital-art, Cinematic, Documentary, Portrait
-    - **El nuevo sistema** entiende el contexto completo, no solo las primeras palabras
+    - **🤖 Automático Inteligente (RECOMENDADO)**: Claude adapta el análisis visual a cada tipología
+    - **Ejemplos de adaptación automática:**
+      - Diálogos → Escenas de conversación natural
+      - Recetas → Ingredientes y cocina acogedora  
+      - Cultural → Elementos tradicionales y costumbres
+      - Trivia → Ambiente educativo y cultural
+    - **👤 Personalizado**: Escribe tu prompt EN INGLÉS para control total
     
     **🎵 Para el audio:**
-    - El texto se limpia automáticamente para TTS
-    - Textos muy largos se truncan a 4000 caracteres
-    - Diferentes voces tienen personalidades distintas
+    - Funciona igual de bien con todas las tipologías
+    - Los textos breves (posts, clips) suenan especialmente naturales
+    - Los diálogos se narran de forma fluida
     """)
 
 with tab4:
@@ -903,21 +1180,51 @@ with tab4:
     **🧠 Claude Sonnet 4 (2025)**
     - Modelo más avanzado de Anthropic
     - claude-sonnet-4-20250514: La versión más reciente
-    - Ahora usado para: Generación de texto + Análisis inteligente para prompts visuales
+    - Ahora especializado en **13 tipologías diferentes** de contenido
+    - Doble función: Generación de texto + Análisis inteligente para prompts visuales
     
     **🎨 Flux (Black Forest Labs)**
     - **Flux Pro 1.1**: Control total de dimensiones, excelente calidad
     - **Flux Pro 1.1 Ultra**: Máxima calidad, aspect ratios automáticos
     - Optimizado para recibir prompts en inglés
+    - Adaptación automática según tipología de contenido
     
     **🗣️ OpenAI TTS-1-HD**
     - Modelo de alta definición para síntesis de voz
     - 6 voces diferentes con personalidades únicas
+    - Funciona perfectamente con todas las tipologías
     - Calidad de audio profesional
     
     ### 🆕 **Mejoras en esta versión:**
-    - **Sistema de prompts inteligente**: Claude analiza el contenido completo
-    - **Mejor coherencia**: Imágenes perfectamente alineadas con el texto
-    - **Prompts en inglés**: Optimización automática para Flux
-    - **Información detallada**: Transparencia total sobre qué prompt se usó
+    
+    **📋 13 Tipologías de Contenido:**
+    - Originales: Ejercicio, Artículo, Texto, Relato
+    - Nuevas: Diálogo situacional, Artículo cultural, Artículo de actualidad, Artículo biográfico, Clip de noticias, Pregunta de debate, Receta de cocina, Post de redes sociales, Trivia cultural
+    
+    **🧠 Sistema de Prompts Inteligente Especializado:**
+    - Análisis específico para cada tipo de contenido
+    - Prompts visuales adaptados automáticamente
+    - Mejor coherencia entre texto e imagen
+    - Generación en inglés optimizada para Flux
+    
+    **🎯 Adaptaciones por Tipología:**
+    - **Educativo** (ejercicios, trivia): Ambientes de aprendizaje
+    - **Cultural** (artículos culturales, biográficos): Elementos tradicionales
+    - **Conversacional** (diálogos, debates): Escenas de interacción social  
+    - **Gastronómico** (recetas): Cocinas y ingredientes apetitosos
+    - **Social** (posts de redes): Estética moderna y "instagrameable"
+    - **Informativo** (noticias, actualidad): Ambientes profesionales
+    
+    **📊 Información Detallada:**
+    - Transparencia total sobre qué prompt se usó
+    - Estadísticas específicas por tipología
+    - Feedback en tiempo real durante el proceso
+    - Indicadores visuales del tipo de generación
+    
+    ### 🔧 **Funcionalidades Técnicas:**
+    - **Sistema de fallback robusto**: Garantiza funcionamiento incluso si algo falla
+    - **Session state persistente**: No se pierde el contenido generado
+    - **Descarga individual**: Cada elemento por separado
+    - **Progress tracking**: Seguimiento detallado del proceso
+    - **Error handling**: Manejo inteligente de errores y timeouts
     """)
