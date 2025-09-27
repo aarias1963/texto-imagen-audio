@@ -122,7 +122,7 @@ with st.sidebar:
 # ===============================
 
 def analyze_characters_with_claude(text_content: str, content_type: str, api_key: str, model: str) -> Dict[str, Any]:
-    """Analiza el texto con Claude para detectar personajes y generar character cards"""
+    """Analiza el texto con Claude para detectar personajes y generar character cards con escenas específicas y variadas"""
     try:
         headers = {
             "x-api-key": api_key,
@@ -130,49 +130,73 @@ def analyze_characters_with_claude(text_content: str, content_type: str, api_key
             "anthropic-version": "2023-06-01"
         }
         
-        system_prompt = """Eres un experto en análisis narrativo y descripción visual de personajes. Tu tarea es analizar texto y extraer información sobre personajes para generar imágenes consistentes.
+        system_prompt = """Eres un experto en análisis narrativo y dirección visual cinematográfica. Tu tarea es analizar texto narrativo y extraer información detallada sobre personajes para generar secuencias de imágenes visualmente variadas pero consistentes.
 
-INSTRUCCIONES:
-1. Identifica TODOS los personajes principales (personas, animales, criaturas)
-2. Para cada personaje, extrae características físicas específicas
-3. Genera descripciones visuales detalladas y consistentes
-4. Determina qué escenas/acciones podrían generarse
-5. Responde SOLO en formato JSON válido
+INSTRUCCIONES CLAVE:
+1. Identifica TODOS los personajes principales con características físicas específicas
+2. Analiza el relato MOMENTO A MOMENTO para extraer escenas clave
+3. Para cada escena, genera una descripción visual ÚNICA con diferentes:
+   - Ángulos de cámara (close-up, wide shot, medium shot, etc.)
+   - Emociones y expresiones específicas del momento
+   - Composición visual (primer plano, plano general, etc.)
+   - Iluminación y ambiente según la narrativa
+   - Poses y acciones específicas del personaje
 
-FORMATO DE RESPUESTA:
+FORMATO DE RESPUESTA (JSON válido):
 {
   "has_characters": true/false,
   "characters": [
     {
       "name": "nombre_descriptivo",
       "type": "human/animal/creature",
-      "physical_description": "descripción física detallada en inglés",
-      "key_features": ["característica1", "característica2"],
+      "physical_description": "descripción física DETALLADA en inglés (color específico, características únicas, tamaño, etc.)",
+      "key_features": ["característica física específica 1", "característica física específica 2", "característica física específica 3"],
       "suggested_scenes": [
         {
-          "action": "acción específica",
-          "scene_description": "descripción de la escena en inglés"
+          "action": "momento específico del relato",
+          "scene_description": "descripción visual COMPLETA en inglés incluyendo: [PERSONAJE con características físicas], [ACCIÓN específica], [EMOCIÓN visible], [COMPOSICIÓN de cámara], [AMBIENTE/ILUMINACIÓN], [ELEMENTOS del entorno]",
+          "visual_composition": "tipo de plano (close-up/medium/wide shot)",
+          "emotional_state": "estado emocional específico del personaje",
+          "lighting_mood": "tipo de iluminación apropiada"
         }
       ]
     }
   ],
-  "visual_style": "estilo visual sugerido para las imágenes",
-  "consistency_notes": "notas para mantener consistencia visual"
-}"""
+  "visual_style": "estilo visual sugerido",
+  "consistency_notes": "elementos clave para mantener consistencia visual entre escenas"
+}
 
-        user_message = f"""Analiza el siguiente {content_type} y extrae información sobre personajes:
+EJEMPLOS DE SCENE_DESCRIPTION VARIADAS:
+- "Luna, white hen with bright red comb and small black eyes, looking desperately worried in close-up, searching frantically around empty wooden chicken coop, morning sunlight casting long shadows"
+- "Luna, white hen with bright red comb and small black eyes, in medium shot talking emotionally to pink pig Max near rustic wooden fence, tears visible in eyes, soft golden afternoon light"
+- "Luna, white hen with bright red comb and small black eyes, wide shot walking courageously through dark mysterious forest with pink pig companion, dramatic low-angle view, filtered sunlight through trees"
 
-CONTENIDO:
+IMPORTANTE: Cada scene_description debe ser VISUALMENTE DISTINTA con diferentes composiciones, ángulos y ambientes."""
+
+        user_message = f"""Analiza el siguiente {content_type} momento a momento y extrae información detallada sobre personajes:
+
+CONTENIDO COMPLETO:
 {text_content}
 
-Identifica personajes principales y genera character cards completos para crear imágenes consistentes. Si es un relato, cuento o historia, enfócate en los protagonistas. Si es otro tipo de contenido, identifica cualquier persona o ser que aparezca.
+INSTRUCCIONES ESPECÍFICAS:
+1. Lee todo el relato/cuento completo
+2. Identifica los momentos narrativos clave donde cada personaje tiene una acción/emoción específica
+3. Para cada momento, crea una escena visualmente ÚNICA con descripción completa
+4. Asegúrate de que cada scene_description tenga:
+   - Características físicas específicas del personaje
+   - Acción/pose diferente
+   - Emoción visible apropiada al momento
+   - Composición de cámara variada
+   - Ambiente/iluminación acorde a la narrativa
+
+OBJETIVO: Generar 3-5 escenas por personaje que cuenten la historia visualmente con MÁXIMA VARIEDAD pero manteniendo la consistencia del personaje.
 
 Responde ÚNICAMENTE con el JSON solicitado."""
 
         data = {
             "model": model,
-            "max_tokens": 2000,
-            "temperature": 0.3,
+            "max_tokens": 3000,  # Aumentado para análisis más detallado
+            "temperature": 0.4,  # Ligeramente más creativo
             "system": system_prompt,
             "messages": [
                 {"role": "user", "content": user_message}
@@ -183,7 +207,7 @@ Responde ÚNICAMENTE con el JSON solicitado."""
             "https://api.anthropic.com/v1/messages",
             headers=headers,
             json=data,
-            timeout=60
+            timeout=90
         )
         
         if response.status_code == 200:
@@ -197,9 +221,17 @@ Responde ÚNICAMENTE con el JSON solicitado."""
             # Parsear JSON
             try:
                 character_data = json.loads(claude_response)
+                
+                # Validar que se generaron escenas variadas
+                if character_data.get("has_characters", False):
+                    total_scenes = sum(len(char.get("suggested_scenes", [])) for char in character_data.get("characters", []))
+                    if total_scenes > 0:
+                        st.success(f"✅ Claude generó {total_scenes} escenas variadas para la secuencia")
+                
                 return character_data
             except json.JSONDecodeError as e:
                 st.error(f"Error parseando análisis de personajes: {e}")
+                st.error(f"Respuesta de Claude: {claude_response[:500]}...")
                 return {"has_characters": False, "characters": []}
         else:
             st.error(f"Error en análisis de personajes: {response.status_code}")
@@ -209,12 +241,36 @@ Responde ÚNICAMENTE con el JSON solicitado."""
         st.error(f"Error analizando personajes: {str(e)}")
         return {"has_characters": False, "characters": []}
 
-def generate_character_seed(character_name: str) -> int:
-    """Genera un seed consistente basado en el nombre del personaje"""
-    hash_object = hashlib.md5(character_name.encode())
-    hex_dig = hash_object.hexdigest()
-    seed = int(hex_dig[:8], 16) % 100000
-    return seed
+def generate_character_seed(character_name: str, scene_action: str = "") -> int:
+    """
+    Genera un seed consistente basado en el personaje con variación controlada por escena
+    
+    Args:
+        character_name: Nombre del personaje (para consistencia base)
+        scene_action: Acción específica de la escena (para variación)
+    
+    Returns:
+        Seed que mantiene consistencia del personaje pero permite variación visual
+    """
+    import hashlib
+    
+    # Seed base del personaje (siempre igual para el mismo personaje)
+    base_hash = hashlib.md5(character_name.encode()).hexdigest()
+    base_seed = int(base_hash[:6], 16) % 50000
+    
+    # Variación sutil por escena (si se proporciona)
+    if scene_action and scene_action.strip():
+        scene_hash = hashlib.md5(scene_action.encode()).hexdigest()
+        scene_variation = int(scene_hash[:3], 16) % 1000
+        
+        # Combinar: mantener consistencia del personaje + añadir variación de escena
+        final_seed = base_seed + scene_variation
+    else:
+        # Si no hay acción específica, usar solo el seed base del personaje
+        final_seed = base_seed
+    
+    # Asegurar que el seed esté en rango válido
+    return final_seed % 100000
 
 def create_character_prompt(character: Dict, scene: Dict, style: str = "photorealistic") -> str:
     """Crea un prompt optimizado para Flux combinando personaje + escena"""
@@ -841,7 +897,7 @@ def generate_character_sequence(text_content: str, content_type: str, character_
         st.subheader(f"👤 Personaje {i+1}: {character['name']}")
         
         # Generar seed consistente para este personaje
-        character_seed = generate_character_seed(character["name"])
+        character_seed = generate_character_seed(character["name"], scene["action"])
         
         # Información del personaje
         with st.expander(f"📋 Character Card: {character['name']}"):
@@ -1374,7 +1430,7 @@ if st.session_state.generation_complete and st.session_state.generated_content:
                             st.image(
                                 image_data["image_obj"], 
                                 caption=f"{image_data['scene']}",
-                                use_column_width=True
+                                use_container_width=True
                             )
                             
                             # Mostrar información de la imagen
