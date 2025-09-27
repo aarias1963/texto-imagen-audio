@@ -928,7 +928,7 @@ def generate_character_sequence(text_content: str, content_type: str, character_
             scene_prompt = create_character_prompt(character, scene, flux_config["style"])
             
             # Mostrar el prompt que se va a usar
-            with st.expander(f"📝 Prompt para {scene['action']} (Seed: {scene_seed})"):
+            with st.expander(f"📝 Prompt para {scene['action']} (Seed: {character_seed})"):
                 st.code(scene_prompt, language="text")
             
             # Generar imagen con seed específico de la escena
@@ -956,7 +956,7 @@ def generate_character_sequence(text_content: str, content_type: str, character_
                     image_data = {
                         "scene": scene["action"],
                         "prompt": scene_prompt,
-                        "seed": caharacter_seed,  # Usar el seed específico de la escena
+                        "seed": character_seed,  # Usar el seed específico de la escena
                         "image_bytes": img_bytes,
                         "image_obj": image_result,
                         "timestamp": int(time.time()),
@@ -990,8 +990,7 @@ def generate_character_sequence(text_content: str, content_type: str, character_
         # Mostrar resumen por personaje
         for card in sequence_results["character_cards"]:
             if card["images"]:
-                seeds_used = [img["seed"] for img in card["images"]]
-                st.write(f"**{card['name']}**: {len(card['images'])} imágenes con seeds {seeds_used}")
+                st.write(f"**{card['name']}**: {len(card['images'])} imágenes con seed {card['seed']}")
     else:
         st.error("❌ No se pudo generar ninguna imagen de la secuencia")
         sequence_results["success"] = False
