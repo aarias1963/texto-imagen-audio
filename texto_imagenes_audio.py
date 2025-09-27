@@ -922,7 +922,7 @@ def generate_character_sequence(text_content: str, content_type: str, character_
             st.write(f"🎬 Escena {j+1}: {scene['action']}")
             
             # Generar seed específico para esta escena
-            scene_seed = generate_character_seed(character["name"], scene["action"])
+            character_seed = generate_character_seed(character["name"])
             
             # Crear prompt específico para esta escena
             scene_prompt = create_character_prompt(character, scene, flux_config["style"])
@@ -935,7 +935,7 @@ def generate_character_sequence(text_content: str, content_type: str, character_
             try:
                 if flux_config["model"] == "flux-pro-1.1-ultra":
                     aspect_ratio = f"{flux_config['width']}:{flux_config['height']}" if flux_config['width'] == flux_config['height'] else "16:9"
-                    image_result = generate_image_flux_ultra(scene_prompt, aspect_ratio, flux_config["api_key"], scene_seed)
+                    image_result = generate_image_flux_ultra(scene_prompt, aspect_ratio, flux_config["api_key"], character_seed)
                 else:
                     image_result = generate_image_flux_pro(
                         scene_prompt, 
@@ -943,7 +943,7 @@ def generate_character_sequence(text_content: str, content_type: str, character_
                         flux_config["height"], 
                         flux_config["steps"], 
                         flux_config["api_key"], 
-                        scene_seed
+                        character_seed
                     )
                 
                 if isinstance(image_result, Image.Image):
@@ -956,7 +956,7 @@ def generate_character_sequence(text_content: str, content_type: str, character_
                     image_data = {
                         "scene": scene["action"],
                         "prompt": scene_prompt,
-                        "seed": scene_seed,  # Usar el seed específico de la escena
+                        "seed": caharacter_seed,  # Usar el seed específico de la escena
                         "image_bytes": img_bytes,
                         "image_obj": image_result,
                         "timestamp": int(time.time()),
@@ -968,7 +968,7 @@ def generate_character_sequence(text_content: str, content_type: str, character_
                     
                     # Mostrar imagen generada
                     st.image(image_result, caption=f"{character['name']} - {scene['action']}")
-                    st.success(f"✅ Imagen generada con seed {scene_seed}")
+                    st.success(f"✅ Imagen generada con seed {character_seed}")
                     
                 else:
                     error_msg = f"Error generando imagen para {character['name']} - {scene['action']}: {image_result}"
