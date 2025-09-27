@@ -7,6 +7,7 @@ from PIL import Image
 from io import BytesIO
 import json
 import os
+import hashlib
 from typing import Optional, Dict, Any
 
 # Configuración de la página
@@ -22,6 +23,19 @@ if 'generated_content' not in st.session_state:
 
 if 'generation_complete' not in st.session_state:
     st.session_state.generation_complete = False
+
+# NUEVO: Session state para secuencias de personajes
+if 'character_sequence_mode' not in st.session_state:
+    st.session_state.character_sequence_mode = False
+
+if 'character_analysis' not in st.session_state:
+    st.session_state.character_analysis = None
+
+if 'character_images' not in st.session_state:
+    st.session_state.character_images = []
+
+if 'sequence_generation_complete' not in st.session_state:
+    st.session_state.sequence_generation_complete = False
 
 # Título principal
 st.title("🎨 Generador de Contenido Multimedia")
@@ -77,6 +91,23 @@ with st.sidebar:
     st.subheader("Configuraciones Avanzadas")
     max_tokens_claude = st.number_input("Max tokens Claude", 500, 4000, 2000)
     
+    # NUEVO: Configuración para secuencias de personajes
+    st.subheader("🎭 Secuencias de Personajes")
+    sequence_mode = st.checkbox(
+        "Activar modo secuencia",
+        value=st.session_state.character_sequence_mode,
+        help="Genera múltiples imágenes con los mismos personajes"
+    )
+    
+    if sequence_mode != st.session_state.character_sequence_mode:
+        st.session_state.character_sequence_mode = sequence_mode
+        # Limpiar datos anteriores si se cambia el modo
+        if not sequence_mode:
+            st.session_state.character_analysis = None
+            st.session_state.character_images = []
+            st.session_state.sequence_generation_complete = False
+        st.rerun()
+    
     # Configuraciones específicas según modelo de Flux
     if flux_model == "flux-pro-1.1":
         image_width = st.selectbox("Ancho de imagen", [512, 768, 1024, 1344], index=2)
@@ -86,6 +117,125 @@ with st.sidebar:
         image_width = 1024  # Valor por defecto para Ultra
         image_height = 1024
 
+# ===============================
+# FUNCIONES PARA DETECCIÓN DE PERSONAJES
+# ===============================
+
+def analyze_characters_with_claude(text_content: str, content_type: str, api_key: str, model: str) -> Dict[str, Any]:
+    """Analiza el texto con Claude para detectar personajes y generar character cards"""
+    try:
+        headers = {
+            "x-api-key": api_key,
+            "Content-Type": "application/json",
+            "anthropic-version": "2023-06-01"
+        }
+        
+        system_prompt = """Eres un experto en análisis narrativo y descripción visual de personajes. Tu tarea es analizar texto y extraer información sobre personajes para generar imágenes consistentes.
+
+INSTRUCCIONES:
+1. Identifica TODOS los personajes principales (personas, animales, criaturas)
+2. Para cada personaje, extrae características físicas específicas
+3. Genera descripciones visuales detalladas y consistentes
+4. Determina qué escenas/acciones podrían generarse
+5. Responde SOLO en formato JSON válido
+
+FORMATO DE RESPUESTA:
+{
+  "has_characters": true/false,
+  "characters": [
+    {
+      "name": "nombre_descriptivo",
+      "type": "human/animal/creature",
+      "physical_description": "descripción física detallada en inglés",
+      "key_features": ["característica1", "característica2"],
+      "suggested_scenes": [
+        {
+          "action": "acción específica",
+          "scene_description": "descripción de la escena en inglés"
+        }
+      ]
+    }
+  ],
+  "visual_style": "estilo visual sugerido para las imágenes",
+  "consistency_notes": "notas para mantener consistencia visual"
+}"""
+
+        user_message = f"""Analiza el siguiente {content_type} y extrae información sobre personajes:
+
+CONTENIDO:
+{text_content}
+
+Identifica personajes principales y genera character cards completos para crear imágenes consistentes. Si es un relato, cuento o historia, enfócate en los protagonistas. Si es otro tipo de contenido, identifica cualquier persona o ser que aparezca.
+
+Responde ÚNICAMENTE con el JSON solicitado."""
+
+        data = {
+            "model": model,
+            "max_tokens": 2000,
+            "temperature": 0.3,
+            "system": system_prompt,
+            "messages": [
+                {"role": "user", "content": user_message}
+            ]
+        }
+        
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers=headers,
+            json=data,
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            response_data = response.json()
+            claude_response = response_data["content"][0]["text"].strip()
+            
+            # Limpiar respuesta de Claude (quitar markdown si existe)
+            if claude_response.startswith("```json"):
+                claude_response = claude_response.replace("```json", "").replace("```", "").strip()
+            
+            # Parsear JSON
+            try:
+                character_data = json.loads(claude_response)
+                return character_data
+            except json.JSONDecodeError as e:
+                st.error(f"Error parseando análisis de personajes: {e}")
+                return {"has_characters": False, "characters": []}
+        else:
+            st.error(f"Error en análisis de personajes: {response.status_code}")
+            return {"has_characters": False, "characters": []}
+            
+    except Exception as e:
+        st.error(f"Error analizando personajes: {str(e)}")
+        return {"has_characters": False, "characters": []}
+
+def generate_character_seed(character_name: str) -> int:
+    """Genera un seed consistente basado en el nombre del personaje"""
+    hash_object = hashlib.md5(character_name.encode())
+    hex_dig = hash_object.hexdigest()
+    seed = int(hex_dig[:8], 16) % 100000
+    return seed
+
+def create_character_prompt(character: Dict, scene: Dict, style: str = "photorealistic") -> str:
+    """Crea un prompt optimizado para Flux combinando personaje + escena"""
+    base_character = character["physical_description"]
+    scene_description = scene["scene_description"]
+    
+    # Plantilla base para prompts consistentes
+    prompt_template = f"{base_character}, {scene_description}"
+    
+    # Añadir estilo y calidad
+    style_suffix = {
+        "photorealistic": "photorealistic, high quality, detailed, professional photography",
+        "digital-art": "digital art, high quality, artistic, professional illustration",
+        "cinematic": "cinematic composition, dramatic lighting, film photography",
+        "documentary": "documentary style, natural lighting, authentic photography",
+        "portrait": "portrait photography, professional lighting, high quality"
+    }
+    
+    final_prompt = f"{prompt_template}, {style_suffix.get(style, style_suffix['photorealistic'])}"
+    
+    return final_prompt
 # Función para generar texto con Claude Sonnet 4
 def generate_text_claude(prompt: str, content_type: str, api_key: str, model: str, max_tokens: int) -> Optional[str]:
     """Genera contenido de texto usando Claude Sonnet 4 de Anthropic"""
@@ -469,113 +619,6 @@ Por favor, responde ÚNICAMENTE con el prompt visual en inglés optimizado para 
         st.error(f"Error en la generación de prompt visual con Claude: {str(e)}")
         return None
 
-# ===== INTERFAZ PRINCIPAL CON COLUMNAS CORREGIDAS =====
-# Crear las columnas PRIMERO, antes de definir el contenido
-col1, col2 = st.columns([2, 1])
-
-# ===== COLUMNA DERECHA (col2) - MOVER ARRIBA PARA ALINEAR =====
-with col2:
-    st.header("🚀 Generación")
-    
-    # Información del modelo mejorada
-    st.info(f"🧠 **Claude**: {claude_model}\n\n🎨 **Flux**: {flux_model}\n\n🗣️ **Voz**: {voice_model}")
-    
-    # Información sobre el sistema de prompts
-    st.success("🔬 **Sistema Inteligente:**\n\nClaude analiza todo tu contenido para generar prompts visuales perfectamente adaptados")
-    
-    # Información sobre las nuevas tipologías
-    with st.expander("🆕 Nuevas tipologías disponibles"):
-        st.markdown("""
-        **🗣️ Diálogos situacionales**: Conversaciones naturales (6-10 líneas)
-        
-        **🎭 Artículo cultural**: Tradiciones y costumbres (120-150 palabras)
-        
-        **📺 Artículo de actualidad**: Noticias simplificadas (80-120 palabras)
-        
-        **👤 Artículo biográfico**: Mini-biografías (100-120 palabras)
-        
-        **📱 Clip de noticias**: 5 noticias ultrabreves (40-60 palabras c/u)
-        
-        **💭 Pregunta de debate**: Dilemas para conversación (2-3 frases)
-        
-        **👨‍🍳 Receta de cocina**: Recetas sencillas (80-100 palabras)
-        
-        **📲 Post de redes sociales**: Contenido informal (40-60 palabras)
-        
-        **🧠 Trivia cultural**: 6 preguntas de cultura general
-        """)
-    
-    # Botón principal
-    generate_button = st.button(
-        "🎯 Generar Contenido Multimedia",
-        type="primary",
-        use_container_width=True
-    )
-    
-    # Validación de APIs
-    apis_ready = all([anthropic_api_key, bfl_api_key, openai_api_key])
-    if not apis_ready:
-        missing_apis = []
-        if not anthropic_api_key: missing_apis.append("Anthropic")
-        if not bfl_api_key: missing_apis.append("Black Forest Labs")  
-        if not openai_api_key: missing_apis.append("OpenAI")
-        
-        st.warning(f"⚠️ APIs faltantes: {', '.join(missing_apis)}")
-
-# ===== COLUMNA IZQUIERDA (col1) - CONTENIDO PRINCIPAL =====
-with col1:
-    st.header("📝 Generación de Contenido")
-    
-    # Input del usuario con ejemplos ampliados
-    user_prompt = st.text_area(
-        "Describe tu idea:",
-        placeholder="""Ejemplos por tipo de contenido:
-
-🎓 Ejercicio: "Funciones lineales para estudiantes de secundaria"
-📰 Artículo: "El futuro de la energía renovable" 
-📚 Texto: "Guía de productividad personal"
-📖 Relato: "Un gato que viaja en el tiempo"
-
-🗣️ Diálogo situacional: "Pidiendo direcciones en el aeropuerto"
-🎭 Artículo cultural: "La celebración del Día de Muertos en México"
-📺 Artículo de actualidad: "Nuevas medidas ambientales aprobadas"
-👤 Artículo biográfico: "Frida Kahlo, pintora mexicana"
-
-📱 Clip de noticias: "Avances tecnológicos de esta semana"
-💭 Pregunta de debate: "¿Es ético usar inteligencia artificial en educación?"
-👨‍🍳 Receta de cocina: "Cómo hacer tacos al pastor auténticos"
-📲 Post de redes sociales: "Consejos para ser más sostenible"
-🧠 Trivia cultural: "Conocimientos sobre arte latinoamericano" """,
-        height=150
-    )
-    
-    # Tipo de contenido (AMPLIADO)
-    content_type = st.selectbox(
-        "Tipo de contenido a generar:",
-        ["ejercicio", "artículo", "texto", "relato", "diálogo situacional", 
-         "artículo cultural", "artículo de actualidad", "artículo biográfico", 
-         "clip de noticias", "pregunta de debate", "receta de cocina", 
-         "post de redes sociales", "trivia cultural"],
-        help="Selecciona el tipo que mejor se adapte a tu necesidad"
-    )
-    
-    # Prompt opcional para imagen
-    st.subheader("🖼️ Personalización de Imagen (Opcional)")
-    image_prompt = st.text_area(
-        "Prompt personalizado para la imagen (en inglés):",
-        placeholder="""Opcional: Describe específicamente qué imagen quieres generar EN INGLÉS.
-Si lo dejas vacío, Claude analizará el contenido y generará automáticamente un prompt optimizado.
-
-Ejemplos:
-• A person studying with mathematics books in a modern library, natural lighting, photorealistic
-• A futuristic landscape with solar panels and wind turbines at sunset, cinematic composition
-• An orange cat wearing a steampunk hat traveling in a time machine, digital art style
-• Two people having a conversation at an airport terminal, documentary style
-• Traditional Day of the Dead altar with colorful decorations, cultural photography
-• A modern newsroom with journalists working, professional lighting""",
-        height=120,
-        help="Si especificas un prompt EN INGLÉS, este se usará en lugar del generado automáticamente por Claude"
-    )
 # Función para optimizar prompt para Flux (ahora simplificada ya que Claude genera el prompt completo)
 def optimize_prompt_for_flux(prompt, style="photorealistic"):
     """Aplica optimizaciones finales al prompt ya generado por Claude"""
@@ -595,7 +638,7 @@ def optimize_prompt_for_flux(prompt, style="photorealistic"):
         return prompt
 
 # Función para generar imagen con Flux Pro (basada en el archivo de referencia)
-def generate_image_flux_pro(prompt, width, height, steps, api_key):
+def generate_image_flux_pro(prompt, width, height, steps, api_key, seed=None):
     """Genera imagen usando Flux Pro 1.1"""
     headers = {
         'accept': 'application/json',
@@ -609,7 +652,7 @@ def generate_image_flux_pro(prompt, width, height, steps, api_key):
         'height': int(height),
         'steps': int(steps),
         'prompt_upsampling': False,
-        'seed': 42,  # Seed fijo para consistencia
+        'seed': seed if seed is not None else 42,  # Usar seed proporcionado o default
         'guidance': 2.5,
         'safety_tolerance': 2,
         'interval': 2,
@@ -625,7 +668,7 @@ def generate_image_flux_pro(prompt, width, height, steps, api_key):
     return process_flux_response(response, api_key)
 
 # Función para generar imagen con Flux Ultra (basada en el archivo de referencia)  
-def generate_image_flux_ultra(prompt, aspect_ratio, api_key):
+def generate_image_flux_ultra(prompt, aspect_ratio, api_key, seed=None):
     """Genera imagen usando Flux Pro 1.1 Ultra"""
     headers = {
         'accept': 'application/json',
@@ -635,7 +678,7 @@ def generate_image_flux_ultra(prompt, aspect_ratio, api_key):
     
     json_data = {
         'prompt': prompt,
-        'seed': 42,
+        'seed': seed if seed is not None else 42,  # Usar seed proporcionado o default
         'aspect_ratio': aspect_ratio,
         'safety_tolerance': 2,
         'output_format': 'jpeg',
@@ -706,9 +749,8 @@ def process_flux_response(response, api_key):
                 return f"Estado inesperado: {status}"
         
         return "Timeout: La generación tomó demasiado tiempo."
-
-# Función principal para generar imagen con Flux (MEJORADA)
-def generate_image_flux(text_content: str, content_type: str, api_key: str, model: str, width: int, height: int, steps: int, style: str = "photorealistic", custom_prompt: str = None, claude_api_key: str = None, claude_model: str = None) -> tuple[Optional[Image.Image], str]:
+# Función principal para generar imagen con Flux (MEJORADA CON SOPORTE PARA SECUENCIAS)
+def generate_image_flux(text_content: str, content_type: str, api_key: str, model: str, width: int, height: int, steps: int, style: str = "photorealistic", custom_prompt: str = None, claude_api_key: str = None, claude_model: str = None, character_seed: int = None) -> tuple[Optional[Image.Image], str]:
     """Genera imagen usando Flux con prompt inteligente generado por Claude"""
     try:
         # Determinar qué prompt usar
@@ -747,7 +789,7 @@ def generate_image_flux(text_content: str, content_type: str, api_key: str, mode
             final_prompt = optimize_prompt_for_flux(visual_prompt, style)
         
         # Mostrar información del prompt generado
-        with st.expander(f"📝 Prompt generado ({prompt_source})"):
+        with st.expander(f"🔍 Prompt generado ({prompt_source})"):
             st.code(final_prompt, language="text")
             if prompt_source == "inteligente":
                 st.success("🧠 Prompt generado por Claude analizando todo el contenido")
@@ -756,14 +798,14 @@ def generate_image_flux(text_content: str, content_type: str, api_key: str, mode
             else:
                 st.warning("⚙️ Prompt básico (primeras palabras del contenido)")
         
-        # Generar imagen según el modelo
+        # Generar imagen según el modelo con seed opcional
         if model == "flux-pro-1.1-ultra":
             # Usar Ultra con aspect ratio
             aspect_ratio = f"{width}:{height}" if width == height else "16:9"
-            result = generate_image_flux_ultra(final_prompt, aspect_ratio, api_key)
+            result = generate_image_flux_ultra(final_prompt, aspect_ratio, api_key, character_seed)
         else:
             # Usar Pro normal
-            result = generate_image_flux_pro(final_prompt, width, height, steps, api_key)
+            result = generate_image_flux_pro(final_prompt, width, height, steps, api_key, character_seed)
         
         if isinstance(result, Image.Image):
             return result, final_prompt
@@ -776,6 +818,125 @@ def generate_image_flux(text_content: str, content_type: str, api_key: str, mode
         import traceback
         st.error(f"Traceback: {traceback.format_exc()}")
         return None, ""
+
+# NUEVA FUNCIÓN: Generar secuencia de imágenes con personajes consistentes
+def generate_character_sequence(text_content: str, content_type: str, character_analysis: Dict[str, Any], flux_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Genera múltiples imágenes con personajes consistentes usando seeds fijos"""
+    
+    sequence_results = {
+        "success": True,
+        "character_cards": [],
+        "total_images": 0,
+        "errors": []
+    }
+    
+    st.info("🎭 Iniciando generación de secuencia de personajes...")
+    
+    # Crear progress bar para toda la secuencia
+    total_scenes = sum(len(char["suggested_scenes"]) for char in character_analysis["characters"])
+    progress_bar = st.progress(0)
+    scene_counter = 0
+    
+    for i, character in enumerate(character_analysis["characters"]):
+        st.subheader(f"👤 Personaje {i+1}: {character['name']}")
+        
+        # Generar seed consistente para este personaje
+        character_seed = generate_character_seed(character["name"])
+        
+        # Información del personaje
+        with st.expander(f"📋 Character Card: {character['name']}"):
+            st.write(f"**Tipo:** {character['type']}")
+            st.write(f"**Descripción:** {character['physical_description']}")
+            st.write(f"**Características clave:** {', '.join(character['key_features'])}")
+            st.write(f"**Seed consistente:** {character_seed}")
+        
+        character_card = {
+            "name": character["name"],
+            "type": character["type"],
+            "description": character["physical_description"],
+            "seed": character_seed,
+            "images": []
+        }
+        
+        # Generar imagen para cada escena del personaje
+        for j, scene in enumerate(character["suggested_scenes"]):
+            scene_counter += 1
+            progress_bar.progress(scene_counter / total_scenes)
+            
+            st.write(f"🎬 Escena {j+1}: {scene['action']}")
+            
+            # Crear prompt específico para esta escena
+            scene_prompt = create_character_prompt(character, scene, flux_config["style"])
+            
+            # Mostrar el prompt que se va a usar
+            with st.expander(f"📝 Prompt para {scene['action']}"):
+                st.code(scene_prompt, language="text")
+            
+            # Generar imagen con seed fijo del personaje
+            try:
+                if flux_config["model"] == "flux-pro-1.1-ultra":
+                    aspect_ratio = f"{flux_config['width']}:{flux_config['height']}" if flux_config['width'] == flux_config['height'] else "16:9"
+                    image_result = generate_image_flux_ultra(scene_prompt, aspect_ratio, flux_config["api_key"], character_seed)
+                else:
+                    image_result = generate_image_flux_pro(
+                        scene_prompt, 
+                        flux_config["width"], 
+                        flux_config["height"], 
+                        flux_config["steps"], 
+                        flux_config["api_key"], 
+                        character_seed
+                    )
+                
+                if isinstance(image_result, Image.Image):
+                    # Guardar imagen en session state
+                    img_buffer = io.BytesIO()
+                    image_result.save(img_buffer, format="PNG", quality=95)
+                    img_bytes = img_buffer.getvalue()
+                    
+                    # Metadata de la imagen
+                    image_data = {
+                        "scene": scene["action"],
+                        "prompt": scene_prompt,
+                        "seed": character_seed,
+                        "image_bytes": img_bytes,
+                        "image_obj": image_result,
+                        "timestamp": int(time.time()),
+                        "character_name": character["name"]
+                    }
+                    
+                    character_card["images"].append(image_data)
+                    sequence_results["total_images"] += 1
+                    
+                    # Mostrar imagen generada
+                    st.image(image_result, caption=f"{character['name']} - {scene['action']}")
+                    st.success(f"✅ Imagen generada con seed {character_seed}")
+                    
+                else:
+                    error_msg = f"Error generando imagen para {character['name']} - {scene['action']}: {image_result}"
+                    st.error(error_msg)
+                    sequence_results["errors"].append(error_msg)
+                    
+            except Exception as e:
+                error_msg = f"Excepción generando imagen para {character['name']} - {scene['action']}: {str(e)}"
+                st.error(error_msg)
+                sequence_results["errors"].append(error_msg)
+        
+        sequence_results["character_cards"].append(character_card)
+    
+    progress_bar.progress(1.0)
+    
+    if sequence_results["total_images"] > 0:
+        st.success(f"🎉 Secuencia completada: {sequence_results['total_images']} imágenes generadas")
+        
+        # Mostrar resumen por personaje
+        for card in sequence_results["character_cards"]:
+            if card["images"]:
+                st.write(f"**{card['name']}**: {len(card['images'])} imágenes con seed {card['seed']}")
+    else:
+        st.error("❌ No se pudo generar ninguna imagen de la secuencia")
+        sequence_results["success"] = False
+    
+    return sequence_results
 
 # Función para generar audio con OpenAI TTS (mantenemos la misma)
 def generate_audio(text: str, voice: str, api_key: str) -> Optional[bytes]:
@@ -814,15 +975,147 @@ def generate_audio(text: str, voice: str, api_key: str) -> Optional[bytes]:
     except Exception as e:
         st.error(f"Error en la generación de audio: {str(e)}")
         return None
+# ===== INTERFAZ PRINCIPAL CON COLUMNAS CORREGIDAS =====
+# Crear las columnas PRIMERO, antes de definir el contenido
+col1, col2 = st.columns([2, 1])
 
-# ===== PROCESO DE GENERACIÓN (MEJORADO) =====
+# ===== COLUMNA DERECHA (col2) - MOVER ARRIBA PARA ALINEAR =====
+with col2:
+    st.header("🚀 Generación")
+    
+    # Información del modelo mejorada
+    st.info(f"🧠 **Claude**: {claude_model}\n\n🎨 **Flux**: {flux_model}\n\n🗣️ **Voz**: {voice_model}")
+    
+    # Información sobre el sistema de prompts
+    st.success("🔬 **Sistema Inteligente:**\n\nClaude analiza todo tu contenido para generar prompts visuales perfectamente adaptados")
+    
+    # NUEVO: Información sobre secuencias de personajes
+    if st.session_state.character_sequence_mode:
+        st.warning("🎭 **Modo Secuencia Activo:**\n\nSe generarán múltiples imágenes con personajes consistentes usando seeds fijos")
+        
+        # Mostrar análisis de personajes si existe
+        if st.session_state.character_analysis:
+            with st.expander("👥 Personajes detectados"):
+                for i, char in enumerate(st.session_state.character_analysis.get("characters", [])):
+                    st.write(f"**{i+1}. {char['name']}** ({char['type']})")
+                    st.caption(f"Escenas: {len(char.get('suggested_scenes', []))}")
+    
+    # Información sobre las nuevas tipologías
+    with st.expander("🆕 Nuevas tipologías disponibles"):
+        st.markdown("""
+        **🗣️ Diálogos situacionales**: Conversaciones naturales (6-10 líneas)
+        
+        **🎭 Artículo cultural**: Tradiciones y costumbres (120-150 palabras)
+        
+        **📺 Artículo de actualidad**: Noticias simplificadas (80-120 palabras)
+        
+        **👤 Artículo biográfico**: Mini-biografías (100-120 palabras)
+        
+        **📱 Clip de noticias**: 5 noticias ultrabreves (40-60 palabras c/u)
+        
+        **💭 Pregunta de debate**: Dilemas para conversación (2-3 frases)
+        
+        **👨‍🍳 Receta de cocina**: Recetas sencillas (80-100 palabras)
+        
+        **📲 Post de redes sociales**: Contenido informal (40-60 palabras)
+        
+        **🧠 Trivia cultural**: 6 preguntas de cultura general
+        """)
+    
+    # Botón principal
+    generate_button = st.button(
+        "🎯 Generar Contenido Multimedia",
+        type="primary",
+        use_container_width=True
+    )
+    
+    # NUEVO: Botón para modo secuencia
+    if st.session_state.character_sequence_mode:
+        generate_sequence_button = st.button(
+            "🎬 Generar Solo Secuencia de Imágenes",
+            type="secondary",
+            use_container_width=True,
+            help="Genera solo las imágenes de personajes (requiere texto ya generado)"
+        )
+    else:
+        generate_sequence_button = False
+    
+    # Validación de APIs
+    apis_ready = all([anthropic_api_key, bfl_api_key, openai_api_key])
+    if not apis_ready:
+        missing_apis = []
+        if not anthropic_api_key: missing_apis.append("Anthropic")
+        if not bfl_api_key: missing_apis.append("Black Forest Labs")  
+        if not openai_api_key: missing_apis.append("OpenAI")
+        
+        st.warning(f"⚠️ APIs faltantes: {', '.join(missing_apis)}")
+
+# ===== COLUMNA IZQUIERDA (col1) - CONTENIDO PRINCIPAL =====
+with col1:
+    st.header("📝 Generación de Contenido")
+    
+    # Input del usuario con ejemplos ampliados
+    user_prompt = st.text_area(
+        "Describe tu idea:",
+        placeholder="""Ejemplos por tipo de contenido:
+
+🎓 Ejercicio: "Funciones lineales para estudiantes de secundaria"
+📰 Artículo: "El futuro de la energía renovable" 
+📚 Texto: "Guía de productividad personal"
+📖 Relato: "Un gato que viaja en el tiempo"
+
+🗣️ Diálogo situacional: "Pidiendo direcciones en el aeropuerto"
+🎭 Artículo cultural: "La celebración del Día de Muertos en México"
+📺 Artículo de actualidad: "Nuevas medidas ambientales aprobadas"
+👤 Artículo biográfico: "Frida Kahlo, pintora mexicana"
+
+📱 Clip de noticias: "Avances tecnológicos de esta semana"
+💭 Pregunta de debate: "¿Es ético usar inteligencia artificial en educación?"
+👨‍🍳 Receta de cocina: "Cómo hacer tacos al pastor auténticos"
+📲 Post de redes sociales: "Consejos para ser más sostenible"
+🧠 Trivia cultural: "Conocimientos sobre arte latinoamericano" """,
+        height=150
+    )
+    
+    # Tipo de contenido (AMPLIADO)
+    content_type = st.selectbox(
+        "Tipo de contenido a generar:",
+        ["ejercicio", "artículo", "texto", "relato", "diálogo situacional", 
+         "artículo cultural", "artículo de actualidad", "artículo biográfico", 
+         "clip de noticias", "pregunta de debate", "receta de cocina", 
+         "post de redes sociales", "trivia cultural"],
+        help="Selecciona el tipo que mejor se adapte a tu necesidad"
+    )
+    
+    # Prompt opcional para imagen
+    st.subheader("🖼️ Personalización de Imagen (Opcional)")
+    image_prompt = st.text_area(
+        "Prompt personalizado para la imagen (en inglés):",
+        placeholder="""Opcional: Describe específicamente qué imagen quieres generar EN INGLÉS.
+Si lo dejas vacío, Claude analizará el contenido y generará automáticamente un prompt optimizado.
+
+Ejemplos:
+• A person studying with mathematics books in a modern library, natural lighting, photorealistic
+• A futuristic landscape with solar panels and wind turbines at sunset, cinematic composition
+• An orange cat wearing a steampunk hat traveling in a time machine, digital art style
+• Two people having a conversation at an airport terminal, documentary style
+• Traditional Day of the Dead altar with colorful decorations, cultural photography
+• A modern newsroom with journalists working, professional lighting""",
+        height=120,
+        help="Si especificas un prompt EN INGLÉS, este se usará en lugar del generado automáticamente por Claude"
+    )
+
+# ===== PROCESO DE GENERACIÓN PRINCIPAL (MEJORADO CON SOPORTE PARA SECUENCIAS) =====
 if generate_button and user_prompt:
     if not apis_ready:
-        st.error("❌ Por favor, proporciona todas las claves de API necesarias.")
+        st.error("⚠ Por favor, proporciona todas las claves de API necesarias.")
     else:
         # Limpiar contenido anterior
         st.session_state.generated_content = {}
         st.session_state.generation_complete = False
+        st.session_state.character_analysis = None
+        st.session_state.character_images = []
+        st.session_state.sequence_generation_complete = False
         
         # Progress bar mejorada
         progress_bar = st.progress(0)
@@ -850,37 +1143,80 @@ if generate_button and user_prompt:
                 
                 progress_bar.progress(30)
                 
-                # Paso 2: Generar imagen con Flux (MEJORADO)
-                status_text.text(f"🎨 Analizando {content_type} y generando imagen con Flux...")
-                progress_bar.progress(40)
-                
-                generated_image, used_prompt = generate_image_flux(
-                    generated_text, content_type, bfl_api_key, flux_model,
-                    image_width, image_height, flux_steps, image_style, 
-                    image_prompt, anthropic_api_key, claude_model
-                )
-                
-                if generated_image:
-                    # Guardar imagen en session state con información del prompt
-                    img_buffer = io.BytesIO()
-                    generated_image.save(img_buffer, format="PNG", quality=95)
-                    img_bytes = img_buffer.getvalue()
+                # Paso 1.5: NUEVO - Análisis de personajes si está en modo secuencia
+                if st.session_state.character_sequence_mode:
+                    status_text.text("🎭 Analizando personajes para secuencia...")
+                    progress_bar.progress(35)
                     
-                    st.session_state.generated_content['image'] = img_bytes
-                    st.session_state.generated_content['image_obj'] = generated_image
-                    st.session_state.generated_content['image_metadata'] = {
-                        'width': image_width,
-                        'height': image_height,
-                        'model': flux_model,
-                        'steps': flux_steps,
-                        'style': image_style,
-                        'custom_prompt': bool(image_prompt and image_prompt.strip()),
-                        'used_prompt': used_prompt,
-                        'prompt_intelligent': not bool(image_prompt and image_prompt.strip()),
-                        'timestamp': int(time.time())
-                    }
+                    character_analysis = analyze_characters_with_claude(
+                        generated_text, content_type, anthropic_api_key, claude_model
+                    )
+                    
+                    if character_analysis.get("has_characters", False):
+                        st.session_state.character_analysis = character_analysis
+                        st.success(f"✅ Detectados {len(character_analysis['characters'])} personajes para secuencia")
+                    else:
+                        st.warning("⚠️ No se detectaron personajes. Se generará imagen única.")
+                        st.session_state.character_sequence_mode = False
                 
-                progress_bar.progress(70)
+                # Paso 2: Generar imagen(es)
+                if st.session_state.character_sequence_mode and st.session_state.character_analysis:
+                    # Modo secuencia: generar múltiples imágenes
+                    status_text.text("🎬 Generando secuencia de imágenes con personajes...")
+                    progress_bar.progress(40)
+                    
+                    flux_config = {
+                        "api_key": bfl_api_key,
+                        "model": flux_model,
+                        "width": image_width,
+                        "height": image_height,
+                        "steps": flux_steps,
+                        "style": image_style
+                    }
+                    
+                    sequence_results = generate_character_sequence(
+                        generated_text, content_type, st.session_state.character_analysis, flux_config
+                    )
+                    
+                    if sequence_results["success"]:
+                        st.session_state.character_images = sequence_results["character_cards"]
+                        st.session_state.sequence_generation_complete = True
+                        progress_bar.progress(70)
+                    else:
+                        st.error("❌ Error generando secuencia de personajes")
+                        progress_bar.progress(40)
+                else:
+                    # Modo normal: generar imagen única
+                    status_text.text(f"🎨 Analizando {content_type} y generando imagen con Flux...")
+                    progress_bar.progress(40)
+                    
+                    generated_image, used_prompt = generate_image_flux(
+                        generated_text, content_type, bfl_api_key, flux_model,
+                        image_width, image_height, flux_steps, image_style, 
+                        image_prompt, anthropic_api_key, claude_model
+                    )
+                    
+                    if generated_image:
+                        # Guardar imagen en session state con información del prompt
+                        img_buffer = io.BytesIO()
+                        generated_image.save(img_buffer, format="PNG", quality=95)
+                        img_bytes = img_buffer.getvalue()
+                        
+                        st.session_state.generated_content['image'] = img_bytes
+                        st.session_state.generated_content['image_obj'] = generated_image
+                        st.session_state.generated_content['image_metadata'] = {
+                            'width': image_width,
+                            'height': image_height,
+                            'model': flux_model,
+                            'steps': flux_steps,
+                            'style': image_style,
+                            'custom_prompt': bool(image_prompt and image_prompt.strip()),
+                            'used_prompt': used_prompt,
+                            'prompt_intelligent': not bool(image_prompt and image_prompt.strip()),
+                            'timestamp': int(time.time())
+                        }
+                    
+                    progress_bar.progress(70)
                 
                 # Paso 3: Generar audio
                 status_text.text("🗣️ Generando narración en audio...")
@@ -906,17 +1242,60 @@ if generate_button and user_prompt:
                 
                 # Balloons solo una vez
                 st.balloons()
-                st.success("🎉 **¡Generación completada!** Tu contenido multimedia está listo.")
+                if st.session_state.character_sequence_mode and st.session_state.sequence_generation_complete:
+                    st.success("🎉 **¡Generación con secuencia completada!** Tu contenido multimedia con personajes consistentes está listo.")
+                else:
+                    st.success("🎉 **¡Generación completada!** Tu contenido multimedia está listo.")
                 
             else:
-                st.error("❌ Error al generar el contenido de texto con Claude.")
+                st.error("⚠ Error al generar el contenido de texto con Claude.")
                 
         except Exception as e:
-            st.error(f"❌ Error durante la generación: {str(e)}")
+            st.error(f"⚠ Error durante la generación: {str(e)}")
             progress_bar.progress(0)
-            status_text.text("❌ Generación fallida")
+            status_text.text("⚠ Generación fallida")
 
-# ===== MOSTRAR CONTENIDO GENERADO DESDE SESSION STATE (MEJORADO) =====
+# NUEVO: Proceso para generar solo secuencia (si ya existe texto)
+if generate_sequence_button and st.session_state.generated_content.get('text'):
+    if not bfl_api_key:
+        st.error("⚠ Necesitas la API key de Black Forest Labs para generar imágenes.")
+    else:
+        st.info("🎬 Generando solo secuencia de imágenes...")
+        
+        # Analizar personajes del texto existente
+        character_analysis = analyze_characters_with_claude(
+            st.session_state.generated_content['text'], 
+            st.session_state.generated_content['text_metadata']['content_type'],
+            anthropic_api_key, claude_model
+        )
+        
+        if character_analysis.get("has_characters", False):
+            st.session_state.character_analysis = character_analysis
+            
+            flux_config = {
+                "api_key": bfl_api_key,
+                "model": flux_model,
+                "width": image_width,
+                "height": image_height,
+                "steps": flux_steps,
+                "style": image_style
+            }
+            
+            sequence_results = generate_character_sequence(
+                st.session_state.generated_content['text'],
+                st.session_state.generated_content['text_metadata']['content_type'],
+                character_analysis, flux_config
+            )
+            
+            if sequence_results["success"]:
+                st.session_state.character_images = sequence_results["character_cards"]
+                st.session_state.sequence_generation_complete = True
+                st.success("🎉 ¡Secuencia de personajes generada!")
+            else:
+                st.error("❌ Error generando secuencia")
+        else:
+            st.warning("⚠️ No se detectaron personajes en el texto para crear secuencia.")
+# ===== MOSTRAR CONTENIDO GENERADO DESDE SESSION STATE (MEJORADO CON SECUENCIAS) =====
 if st.session_state.generation_complete and st.session_state.generated_content:
     # Contenedores para resultados
     text_container = st.container()
@@ -973,9 +1352,68 @@ if st.session_state.generation_complete and st.session_state.generated_content:
                 mime="text/plain",
                 key=f"download_text_{text_timestamp}"
             )
+
+    # NUEVO: Mostrar secuencia de personajes si existe
+    if st.session_state.sequence_generation_complete and st.session_state.character_images:
+        with image_container:
+            st.header("🎭 Secuencia de Personajes Generada por Flux")
+            
+            total_images = sum(len(card["images"]) for card in st.session_state.character_images)
+            st.success(f"✅ Secuencia completada: {len(st.session_state.character_images)} personajes, {total_images} imágenes")
+            
+            # Mostrar imágenes por personaje
+            for i, character_card in enumerate(st.session_state.character_images):
+                st.subheader(f"👤 {character_card['name']} (Seed: {character_card['seed']})")
+                
+                if character_card["images"]:
+                    # Crear columnas para mostrar imágenes del personaje
+                    cols = st.columns(min(len(character_card["images"]), 3))
+                    
+                    for j, image_data in enumerate(character_card["images"]):
+                        with cols[j % 3]:
+                            st.image(
+                                image_data["image_obj"], 
+                                caption=f"{image_data['scene']}",
+                                use_column_width=True
+                            )
+                            
+                            # Mostrar información de la imagen
+                            with st.expander(f"📋 Info: {image_data['scene']}"):
+                                st.code(image_data["prompt"], language="text")
+                                st.caption(f"Seed: {image_data['seed']} | Personaje: {image_data['character_name']}")
+                            
+                            # Botón de descarga individual
+                            st.download_button(
+                                label="📥 Descargar",
+                                data=image_data["image_bytes"],
+                                file_name=f"{character_card['name']}_{image_data['scene'].replace(' ', '_')}.png",
+                                mime="image/png",
+                                key=f"download_char_img_{i}_{j}_{image_data['timestamp']}"
+                            )
+                else:
+                    st.warning(f"No se generaron imágenes para {character_card['name']}")
+            
+            # Botón para descargar todas las imágenes como ZIP
+            if total_images > 0:
+                import zipfile
+                zip_buffer = io.BytesIO()
+                
+                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                    for character_card in st.session_state.character_images:
+                        for image_data in character_card["images"]:
+                            filename = f"{character_card['name']}_{image_data['scene'].replace(' ', '_')}.png"
+                            zip_file.writestr(filename, image_data["image_bytes"])
+                
+                st.download_button(
+                    label="📦 Descargar Todas las Imágenes (ZIP)",
+                    data=zip_buffer.getvalue(),
+                    file_name=f"secuencia_personajes_{int(time.time())}.zip",
+                    mime="application/zip",
+                    key=f"download_all_sequence_{int(time.time())}"
+                )
     
-    # Mostrar imagen (MEJORADO)
-    if 'image_obj' in st.session_state.generated_content:
+    # Mostrar imagen única (modo normal)
+    elif 'image_obj' in st.session_state.generated_content:
         with image_container:
             st.header("🖼️ Imagen Generada por Flux")
             
@@ -1057,35 +1495,57 @@ if st.session_state.generation_complete and st.session_state.generated_content:
                 key=f"download_audio_{audio_timestamp}"
             )
     
-    # Estadísticas finales (MEJORADAS)
+    # Estadísticas finales (MEJORADAS CON SECUENCIAS)
     with st.expander("📈 Estadísticas de generación"):
-        col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
-        
-        text_meta = st.session_state.generated_content.get('text_metadata', {})
-        image_meta = st.session_state.generated_content.get('image_metadata', {})
-        
-        with col_stats1:
-            st.metric("Palabras generadas", text_meta.get('word_count', 0))
-        with col_stats2:
-            width = image_meta.get('width', 0)
-            height = image_meta.get('height', 0)
-            st.metric("Resolución imagen", f"{width}x{height}" if width and height else "N/A")
-        with col_stats3:
-            st.metric("Pasos Flux", image_meta.get('steps', 0))
-        with col_stats4:
-            content_type = text_meta.get('content_type', 'texto')
-            st.metric("Tipo contenido", content_type.title())
+        if st.session_state.sequence_generation_complete:
+            # Estadísticas para modo secuencia
+            col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
+            
+            text_meta = st.session_state.generated_content.get('text_metadata', {})
+            total_images = sum(len(card["images"]) for card in st.session_state.character_images)
+            total_characters = len(st.session_state.character_images)
+            
+            with col_stats1:
+                st.metric("Palabras generadas", text_meta.get('word_count', 0))
+            with col_stats2:
+                st.metric("Personajes detectados", total_characters)
+            with col_stats3:
+                st.metric("Imágenes en secuencia", total_images)
+            with col_stats4:
+                content_type = text_meta.get('content_type', 'texto')
+                st.metric("Tipo contenido", content_type.title())
+        else:
+            # Estadísticas para modo normal
+            col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
+            
+            text_meta = st.session_state.generated_content.get('text_metadata', {})
+            image_meta = st.session_state.generated_content.get('image_metadata', {})
+            
+            with col_stats1:
+                st.metric("Palabras generadas", text_meta.get('word_count', 0))
+            with col_stats2:
+                width = image_meta.get('width', 0)
+                height = image_meta.get('height', 0)
+                st.metric("Resolución imagen", f"{width}x{height}" if width and height else "N/A")
+            with col_stats3:
+                st.metric("Pasos Flux", image_meta.get('steps', 0))
+            with col_stats4:
+                content_type = text_meta.get('content_type', 'texto')
+                st.metric("Tipo contenido", content_type.title())
     
     # Botón para limpiar y empezar de nuevo
     if st.button("🔄 Generar Nuevo Contenido", type="secondary"):
         st.session_state.generated_content = {}
         st.session_state.generation_complete = False
+        st.session_state.character_analysis = None
+        st.session_state.character_images = []
+        st.session_state.sequence_generation_complete = False
         st.rerun()
 
 # ===== INFORMACIÓN ADICIONAL EN EL FOOTER =====
 st.markdown("---")
 
-# Tabs informativas (ACTUALIZADAS CON NUEVAS TIPOLOGÍAS)
+# Tabs informativas (ACTUALIZADAS CON NUEVAS FUNCIONALIDADES)
 tab1, tab2, tab3, tab4 = st.tabs(["📚 Instrucciones", "🔑 APIs", "💡 Consejos", "⚡ Modelos"])
 
 with tab1:
@@ -1095,75 +1555,55 @@ with tab1:
     1. **🔧 Configura las APIs**: Ingresa tus claves en la barra lateral
     2. **✏️ Escribe tu prompt**: Describe detalladamente qué quieres generar  
     3. **📋 Selecciona el tipo**: Ahora con **13 tipologías** diferentes disponibles
-    4. **⚙️ Personaliza**: Ajusta modelos y configuraciones según tus necesidades
-    5. **🚀 Genera**: Presiona el botón y espera tu contenido multimedia completo
+    4. **🎭 Activa secuencias**: Para contenido con personajes (opcional)
+    5. **⚙️ Personaliza**: Ajusta modelos y configuraciones según tus necesidades
+    6. **🚀 Genera**: Presiona el botón y espera tu contenido multimedia completo
     
-    ### 🆕 **Nuevas tipologías añadidas:**
+    ### 🆕 **Nuevas funcionalidades:**
     
-    **🗣️ Diálogos situacionales**: Conversaciones naturales en contextos específicos
+    **🎭 Modo Secuencia de Personajes:**
+    - Detecta automáticamente personajes en relatos y cuentos
+    - Genera múltiples imágenes con el mismo personaje
+    - Usa seeds consistentes para mantener apariencia
+    - Perfect para cuentos infantiles y material educativo
     
-    **🎭 Artículo cultural**: Tradiciones, costumbres y elementos culturales
-    
-    **📺 Artículo de actualidad**: Noticias adaptadas y simplificadas
-    
-    **👤 Artículo biográfico**: Mini-biografías con datos curiosos
-    
-    **📱 Clip de noticias**: 5 noticias ultrabreves estilo teletipo
-    
-    **💭 Pregunta de debate**: Dilemas para estimular conversación
-    
-    **👨‍🍳 Receta de cocina**: Recetas paso a paso con ingredientes
-    
-    **📲 Post de redes sociales**: Contenido informal con emojis y hashtags
-    
-    **🧠 Trivia cultural**: Preguntas de cultura general con explicaciones
+    **📋 13 Tipologías Especializadas:**
+    - Cada tipo tiene prompts optimizados
+    - Formatos específicos y extensiones adaptadas
+    - Ejemplos y plantillas incluidas
     """)
 
 with tab2:
     st.markdown("""
     ### APIs necesarias:
     
-    **🧠 Anthropic API (Claude)**
+    **🧠 Anthropic API (Claude Sonnet 4)**
     - Regístrate en: https://console.anthropic.com/
-    - Crea una API key en tu dashboard
-    - Usado para: Generación de todas las tipologías de texto + Análisis para prompts visuales
+    - Usado para: Generación de texto + Análisis de personajes + Prompts visuales inteligentes
     
     **🎨 Black Forest Labs API (Flux)**
     - Regístrate en: https://api.bfl.ml/
-    - Obtén tu API key del panel de control  
-    - Usado para generación de imágenes adaptadas a cada tipo de contenido
+    - Usado para: Generación de imágenes + Secuencias con seeds consistentes
     
     **🗣️ OpenAI API (TTS)**
     - Regístrate en: https://platform.openai.com/
-    - Crea una API key en tu cuenta
-    - Usado para conversión de texto a voz (funciona con todas las tipologías)
+    - Usado para: Conversión de texto a voz de alta calidad
     """)
 
 with tab3:
     st.markdown("""
     ### Consejos para mejores resultados:
     
-    **📝 Para el texto:**
-    - **Sé específico** según la tipología elegida
-    - **Ejemplos por tipo:**
-      - Diálogos: "Pidiendo direcciones en el aeropuerto de Madrid"
-      - Cultural: "La tradición del flamenco en Andalucía"
-      - Recetas: "Cómo hacer gazpacho andaluz tradicional"
-      - Trivia: "Preguntas sobre arte latinoamericano contemporáneo"
+    **📝 Para secuencias de personajes:**
+    - Describe claramente los personajes en tu relato
+    - Incluye características físicas específicas
+    - Usa nombres para los personajes principales
+    - El sistema funciona mejor con 1-3 personajes
     
-    **🖼️ Para las imágenes:**
-    - **🤖 Automático Inteligente (RECOMENDADO)**: Claude adapta el análisis visual a cada tipología
-    - **Ejemplos de adaptación automática:**
-      - Diálogos → Escenas de conversación natural
-      - Recetas → Ingredientes y cocina acogedora  
-      - Cultural → Elementos tradicionales y costumbres
-      - Trivia → Ambiente educativo y cultural
-    - **👤 Personalizado**: Escribe tu prompt EN INGLÉS para control total
-    
-    **🎵 Para el audio:**
-    - Funciona igual de bien con todas las tipologías
-    - Los textos breves (posts, clips) suenan especialmente naturales
-    - Los diálogos se narran de forma fluida
+    **🎨 Para imágenes:**
+    - **Automático Inteligente**: Claude adapta el análisis visual a cada tipología
+    - **Personalizado**: Escribe tu prompt EN INGLÉS para control total
+    - **Seeds consistentes**: Garantizan el mismo personaje en múltiples imágenes
     """)
 
 with tab4:
@@ -1171,38 +1611,31 @@ with tab4:
     ### Información de los modelos:
     
     **🧠 Claude Sonnet 4 (2025)**
-    - Modelo más avanzado de Anthropic
-    - claude-sonnet-4-20250514: La versión más reciente
-    - Ahora especializado en **13 tipologías diferentes** de contenido
-    - Doble función: Generación de texto + Análisis inteligente para prompts visuales
+    - Análisis de personajes con IA
+    - Generación de prompts visuales optimizados
+    - 13 tipologías especializadas de contenido
     
-    **🎨 Flux (Black Forest Labs)**
-    - **Flux Pro 1.1**: Control total de dimensiones, excelente calidad
-    - **Flux Pro 1.1 Ultra**: Máxima calidad, aspect ratios automáticos
-    - Optimizado para recibir prompts en inglés
-    - Adaptación automática según tipología de contenido
+    **🎨 Flux Pro 1.1 / Ultra**
+    - Generación de imágenes de alta calidad
+    - Soporte para seeds consistentes
+    - Múltiples estilos visuales
     
     **🗣️ OpenAI TTS-1-HD**
-    - Modelo de alta definición para síntesis de voz
     - 6 voces diferentes con personalidades únicas
-    - Funciona perfectamente con todas las tipologías
     - Calidad de audio profesional
     
-    ### 🆕 **Mejoras en esta versión:**
+    ### 🎭 **Sistema de Consistencia de Personajes:**
     
-    **📋 13 Tipologías de Contenido:**
-    - Originales: Ejercicio, Artículo, Texto, Relato
-    - Nuevas: Diálogo situacional, Artículo cultural, Artículo de actualidad, Artículo biográfico, Clip de noticias, Pregunta de debate, Receta de cocina, Post de redes sociales, Trivia cultural
+    **Cómo funciona:**
+    1. Claude analiza el texto y detecta personajes
+    2. Extrae características físicas específicas
+    3. Genera seed único por personaje
+    4. Crea múltiples escenas con el mismo seed
+    5. Resultado: Mismo personaje en diferentes situaciones
     
-    **🧠 Sistema de Prompts Inteligente Especializado:**
-    - Análisis específico para cada tipo de contenido
-    - Prompts visuales adaptados automáticamente
-    - Mejor coherencia entre texto e imagen
-    - Generación en inglés optimizada para Flux
-    
-    **🔧 Interfaz Mejorada:**
-    - ✅ **Alineación perfecta de columnas**
-    - Información organizada y clara
-    - Feedback detallado en tiempo real
-    - Estadísticas específicas por tipología
+    **Casos de uso perfectos:**
+    - Cuentos infantiles con protagonistas
+    - Material educativo con personajes recurrentes
+    - Relatos con secuencias narrativas
+    - Historias que requieren continuidad visual
     """)
