@@ -877,7 +877,7 @@ def generate_image_flux(text_content: str, content_type: str, api_key: str, mode
 
 # NUEVA FUNCIÓN: Generar secuencia de imágenes con personajes consistentes
 def generate_character_sequence(text_content: str, content_type: str, character_analysis: Dict[str, Any], flux_config: Dict[str, Any]) -> Dict[str, Any]:
-    """Genera múltiples imágenes con personajes consistentes usando seeds fijos"""
+    """Genera múltiples imágenes con personajes consistentes usando seeds variables por escena"""
     
     sequence_results = {
         "success": True,
@@ -896,21 +896,21 @@ def generate_character_sequence(text_content: str, content_type: str, character_
     for i, character in enumerate(character_analysis["characters"]):
         st.subheader(f"👤 Personaje {i+1}: {character['name']}")
         
-        # Generar seed consistente para este personaje
-        character_seed = generate_character_seed(character["name"], scene["action"])
+        # Generar seed base para este personaje (sin escena específica)
+        base_character_seed = generate_character_seed(character["name"])
         
         # Información del personaje
         with st.expander(f"📋 Character Card: {character['name']}"):
             st.write(f"**Tipo:** {character['type']}")
             st.write(f"**Descripción:** {character['physical_description']}")
             st.write(f"**Características clave:** {', '.join(character['key_features'])}")
-            st.write(f"**Seed consistente:** {character_seed}")
+            st.write(f"**Seed base:** {base_character_seed}")
         
         character_card = {
             "name": character["name"],
             "type": character["type"],
             "description": character["physical_description"],
-            "seed": character_seed,
+            "seed": base_character_seed,  # Seed base para referencia
             "images": []
         }
         
@@ -921,18 +921,21 @@ def generate_character_sequence(text_content: str, content_type: str, character_
             
             st.write(f"🎬 Escena {j+1}: {scene['action']}")
             
+            # Generar seed específico para esta escena
+            scene_seed = generate_character_seed(character["name"], scene["action"])
+            
             # Crear prompt específico para esta escena
             scene_prompt = create_character_prompt(character, scene, flux_config["style"])
             
             # Mostrar el prompt que se va a usar
-            with st.expander(f"📝 Prompt para {scene['action']}"):
+            with st.expander(f"📝 Prompt para {scene['action']} (Seed: {scene_seed})"):
                 st.code(scene_prompt, language="text")
             
-            # Generar imagen con seed fijo del personaje
+            # Generar imagen con seed específico de la escena
             try:
                 if flux_config["model"] == "flux-pro-1.1-ultra":
                     aspect_ratio = f"{flux_config['width']}:{flux_config['height']}" if flux_config['width'] == flux_config['height'] else "16:9"
-                    image_result = generate_image_flux_ultra(scene_prompt, aspect_ratio, flux_config["api_key"], character_seed)
+                    image_result = generate_image_flux_ultra(scene_prompt, aspect_ratio, flux_config["api_key"], scene_seed)
                 else:
                     image_result = generate_image_flux_pro(
                         scene_prompt, 
@@ -940,7 +943,7 @@ def generate_character_sequence(text_content: str, content_type: str, character_
                         flux_config["height"], 
                         flux_config["steps"], 
                         flux_config["api_key"], 
-                        character_seed
+                        scene_seed
                     )
                 
                 if isinstance(image_result, Image.Image):
@@ -953,7 +956,7 @@ def generate_character_sequence(text_content: str, content_type: str, character_
                     image_data = {
                         "scene": scene["action"],
                         "prompt": scene_prompt,
-                        "seed": character_seed,
+                        "seed": scene_seed,  # Usar el seed específico de la escena
                         "image_bytes": img_bytes,
                         "image_obj": image_result,
                         "timestamp": int(time.time()),
@@ -965,7 +968,7 @@ def generate_character_sequence(text_content: str, content_type: str, character_
                     
                     # Mostrar imagen generada
                     st.image(image_result, caption=f"{character['name']} - {scene['action']}")
-                    st.success(f"✅ Imagen generada con seed {character_seed}")
+                    st.success(f"✅ Imagen generada con seed {scene_seed}")
                     
                 else:
                     error_msg = f"Error generando imagen para {character['name']} - {scene['action']}: {image_result}"
@@ -987,7 +990,8 @@ def generate_character_sequence(text_content: str, content_type: str, character_
         # Mostrar resumen por personaje
         for card in sequence_results["character_cards"]:
             if card["images"]:
-                st.write(f"**{card['name']}**: {len(card['images'])} imágenes con seed {card['seed']}")
+                seeds_used = [img["seed"] for img in card["images"]]
+                st.write(f"**{card['name']}**: {len(card['images'])} imágenes con seeds {seeds_used}")
     else:
         st.error("❌ No se pudo generar ninguna imagen de la secuencia")
         sequence_results["success"] = False
