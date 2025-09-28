@@ -296,7 +296,13 @@ def create_character_prompt(character: Dict, scene: Dict, style: str = "photorea
         "digital-art": "digital art, high quality, artistic, professional illustration",
         "cinematic": "cinematic composition, dramatic lighting, film photography",
         "documentary": "documentary style, natural lighting, authentic photography",
-        "portrait": "portrait photography, professional lighting, high quality"
+        "portrait": "portrait photography, professional lighting, high quality",
+        "watercolor": "watercolor painting, soft flowing colors, traditional painting technique, paper texture",
+        "oil-painting": "oil painting, visible brushstrokes, rich colors, classical art technique",
+        "anime": "anime style, Japanese animation art, vibrant colors, clean lines, expressive character design, manga style illustration",  # MÁS ESPECÍFICO
+        "sketch": "pencil sketch, artistic drawing, expressive lines, soft shading",
+        "vintage": "vintage style, desaturated colors, aged effect, retro atmosphere",
+        "minimalist": "minimalist design, simple composition, neutral colors, clean aesthetic"
     }
     
     final_prompt = f"{prompt_template}, {style_suffix.get(style, style_suffix['photorealistic'])}"
