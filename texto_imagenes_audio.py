@@ -98,6 +98,16 @@ with st.sidebar:
         value=st.session_state.character_sequence_mode,
         help="Genera múltiples imágenes con los mismos personajes"
     )
+    if sequence_mode:
+        max_scenes_per_character = st.slider(
+        "Escenas por personaje", 
+        min_value=2, 
+        max_value=8, 
+        value=3,
+        help="Número de escenas a generar por cada personaje detectado"
+    )
+    else:
+        max_scenes_per_character = 3  # Valor por defecto
     
     if sequence_mode != st.session_state.character_sequence_mode:
         st.session_state.character_sequence_mode = sequence_mode
@@ -121,7 +131,7 @@ with st.sidebar:
 # FUNCIONES PARA DETECCIÓN DE PERSONAJES
 # ===============================
 
-def analyze_characters_with_claude(text_content: str, content_type: str, api_key: str, model: str) -> Dict[str, Any]:
+def analyze_characters_with_claude(text_content: str, content_type: str, api_key: str, model: str, max_scenes: int = 3) -> Dict[str, Any]:
     """Analiza el texto con Claude para detectar personajes y generar character cards con escenas específicas y variadas"""
     try:
         headers = {
@@ -189,7 +199,7 @@ INSTRUCCIONES ESPECÍFICAS:
    - Composición de cámara variada
    - Ambiente/iluminación acorde a la narrativa
 
-OBJETIVO: Generar 3-5 escenas por personaje que cuenten la historia visualmente con MÁXIMA VARIEDAD pero manteniendo la consistencia del personaje.
+OBJETIVO: Generar exactamente {max_scenes} escenas por personaje que cuenten la historia visualmente con MÁXIMA VARIEDAD pero manteniendo la consistencia del personaje.
 
 Responde ÚNICAMENTE con el JSON solicitado."""
 
@@ -1208,7 +1218,7 @@ if generate_button and user_prompt:
                     progress_bar.progress(35)
                     
                     character_analysis = analyze_characters_with_claude(
-                        generated_text, content_type, anthropic_api_key, claude_model
+                        generated_text, content_type, anthropic_api_key, claude_model, max_scenes_per_character
                     )
                     
                     if character_analysis.get("has_characters", False):
@@ -1325,7 +1335,7 @@ if generate_sequence_button and st.session_state.generated_content.get('text'):
         character_analysis = analyze_characters_with_claude(
             st.session_state.generated_content['text'], 
             st.session_state.generated_content['text_metadata']['content_type'],
-            anthropic_api_key, claude_model
+            anthropic_api_key, claude_model, max_scenes_per_character
         )
         
         if character_analysis.get("has_characters", False):
