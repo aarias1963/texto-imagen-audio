@@ -75,7 +75,7 @@ with st.sidebar:
     # Estilo de imagen
     image_style = st.selectbox(
         "Estilo de imagen",
-        ["photorealistic", "digital-art", "cinematic", "documentary", "portrait"],
+        ["photorealistic", "digital-art", "cinematic", "documentary", "portrait", "watercolor", "oil-painting", "anime", "sketch", "vintage", "minimalist"],
         index=0,
         help="Estilo visual para la generación de imágenes"
     )
@@ -635,12 +635,19 @@ Representa el mundo del conocimiento y la cultura general."""
         }
         
         # Adaptaciones por estilo visual
+        # CAMBIAR de español a inglés:
         style_adaptations = {
-            "photorealistic": "Como una fotografía profesional realista, con iluminación natural, alta definición, composición fotográfica, detalles nítidos",
-            "digital-art": "Como arte digital de alta calidad, colores vibrantes, composición artística, estilo ilustrativo moderno, diseño profesional",
-            "cinematic": "Con composición cinematográfica, iluminación dramática, profundidad de campo, ambiente de película, producción de alta calidad",
-            "documentary": "Estilo documental auténtico, fotografía candida, iluminación natural, ambiente real, calidad periodística",
-            "portrait": "Enfoque retrato profesional, iluminación de estudio, composición centrada en personas, calidad profesional"
+        "photorealistic": "Professional realistic photography with natural lighting, high definition, sharp photographic composition, crisp details",
+        "digital-art": "High quality digital art, vibrant colors, artistic composition, modern illustrative style, professional design",
+        "cinematic": "Cinematic composition, dramatic lighting, depth of field, film atmosphere, high production quality",
+        "documentary": "Authentic documentary style, candid photography, natural lighting, real environment, journalistic quality",
+        "portrait": "Professional portrait photography, studio lighting, people-centered composition, professional quality",
+        "watercolor": "Artistic watercolor style, soft flowing colors, traditional painting technique, paper texture",
+        "oil-painting": "Classic oil painting, visible brushstrokes, rich colors, old masters technique",
+        "anime": "Japanese anime style, vibrant colors, clean lines, expressive character design",
+        "sketch": "Artistic pencil drawing, expressive lines, soft shading, sketch style",
+        "vintage": "Nostalgic vintage style, desaturated colors, aged effect, retro atmosphere", 
+        "minimalist": "Minimalist design, simple composition, neutral colors, negative spaces"
         }
         
         user_message = f"""CONTENIDO A ANALIZAR:
