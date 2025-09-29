@@ -399,31 +399,86 @@ def generate_character_seed(character_name: str, scene_action: str = "") -> int:
     return final_seed % 100000
 
 def create_character_prompt(character: Dict, scene: Dict, style: str = "photorealistic") -> str:
-    """Crea un prompt optimizado para Flux combinando personaje + escena"""
-    base_character = character["physical_description"]
-    scene_description = scene["scene_description"]
+    """
+    Crea un prompt optimizado para Flux priorizando DIFERENCIAS entre escenas
     
-    # Plantilla base para prompts consistentes
-    prompt_template = f"{base_character}, {scene_description}"
+    NUEVA ESTRUCTURA JERÁRQUICA:
+    1. COMPOSICIÓN VISUAL (ángulo de cámara) - Lo más importante
+    2. ACCIÓN/ESCENA específica - Segunda prioridad
+    3. CARACTERÍSTICAS del personaje (compactas) - Tercera prioridad
+    4. EMOCIÓN visible - Cuarta prioridad
+    5. AMBIENTE/ILUMINACIÓN - Quinta prioridad
+    6. ESTILO técnico - Al final
+    """
     
-    # Añadir estilo y calidad
-    style_suffix = {
-        "photorealistic": "photorealistic, high quality, detailed, professional photography",
-        "digital-art": "digital art, high quality, artistic, professional illustration",
-        "cinematic": "cinematic composition, dramatic lighting, film photography",
-        "documentary": "documentary style, natural lighting, authentic photography",
-        "portrait": "portrait photography, professional lighting, high quality",
-        "watercolor": "watercolor painting, soft flowing colors, traditional painting technique, paper texture",
-        "oil-painting": "oil painting, visible brushstrokes, rich colors, classical art technique",
-        "anime": "anime style, Japanese animation art, vibrant colors, clean lines, expressive character design, manga style illustration",  # MÁS ESPECÍFICO
-        "sketch": "pencil sketch, artistic drawing, expressive lines, soft shading",
-        "vintage": "vintage style, desaturated colors, aged effect, retro atmosphere",
-        "minimalist": "minimalist design, simple composition, neutral colors, clean aesthetic"
-    }
+    # 1. COMPOSICIÓN VISUAL - Primer elemento (lo más importante)
+    visual_composition = scene.get("visual_composition", "medium shot")
     
-    final_prompt = f"{prompt_template}, {style_suffix.get(style, style_suffix['photorealistic'])}"
+    # 2. ACCIÓN/ESCENA - Extraer la acción principal
+    scene_action = scene.get("action", "")
+    
+    # 3. PERSONAJE - Solo características CLAVE (top 3, compactas)
+    key_features = character.get("key_features", [])
+    # Tomar solo las 3 características más distintivas
+    compact_features = ", ".join(key_features[:3]) if key_features else character.get("physical_description", "")
+    
+    # 4. EMOCIÓN - Estado emocional visible
+    emotional_state = scene.get("emotional_state", "")
+    
+    # 5. AMBIENTE/ILUMINACIÓN - Extraer del scene_description o usar metadata
+    lighting_mood = scene.get("lighting_mood", "natural lighting")
+    
+    # 6. SCENE_DESCRIPTION completa (ya viene optimizada de Claude)
+    scene_description = scene.get("scene_description", "")
+    
+    # ESTRATEGIA: Usar el scene_description de Claude como base (ya está optimizado)
+    # pero asegurarnos de que tenga el formato correcto
+    
+    # Si scene_description ya existe y está bien formado, usarlo directamente
+    if scene_description and len(scene_description.split(",")) >= 4:
+        # El scene_description de Claude ya tiene el formato optimizado
+        base_prompt = scene_description
+    else:
+        # Fallback: construir manualmente si scene_description no está bien formado
+        base_prompt = f"{visual_composition}, {scene_action}, character: {compact_features}, {emotional_state}, {lighting_mood}"
+    
+    # Añadir estilo técnico al final
+    style_suffix = get_style_suffix(style)
+    
+    final_prompt = f"{base_prompt}, {style_suffix}"
     
     return final_prompt
+
+
+def get_style_suffix(style: str) -> str:
+    """
+    Sufijos de estilo optimizados con énfasis en VARIACIÓN y CALIDAD
+    """
+    style_map = {
+        "photorealistic": "photorealistic photography, varied camera angles, dynamic composition, professional quality, sharp details, high resolution",
+        
+        "digital-art": "digital art, creative composition, artistic variety, vibrant colors, high quality illustration, professional design, detailed artwork",
+        
+        "cinematic": "cinematic composition, film photography, varied camera work, dramatic lighting, depth of field, movie quality, professional cinematography",
+        
+        "documentary": "documentary photography style, authentic candid shots, natural lighting, varied perspectives, real environment, journalistic quality",
+        
+        "portrait": "portrait photography, varied angles and compositions, professional lighting, expressive character focus, high quality",
+        
+        "watercolor": "watercolor painting style, soft flowing colors, varied compositions, traditional painting technique, artistic paper texture, delicate brushwork",
+        
+        "oil-painting": "oil painting style, visible brushstrokes, rich colors, varied classical compositions, old masters technique, artistic texture",
+        
+        "anime": "anime style, dynamic varied compositions, expressive character design, Japanese animation art, vibrant colors, clean lines, manga illustration style, detailed character work",
+        
+        "sketch": "artistic pencil sketch, varied drawing angles, expressive lines, soft shading, hand-drawn style, sketch composition variety",
+        
+        "vintage": "vintage photography style, nostalgic atmosphere, desaturated colors, aged effect, retro composition, classic photography",
+        
+        "minimalist": "minimalist design, varied simple compositions, clean aesthetic, negative space usage, neutral colors, modern minimal style"
+    }
+    
+    return style_map.get(style, style_map["photorealistic"])
 # Función para generar texto con Claude Sonnet 4
 def generate_text_claude(prompt: str, content_type: str, api_key: str, model: str, max_tokens: int) -> Optional[str]:
     """Genera contenido de texto usando Claude Sonnet 4 de Anthropic"""
