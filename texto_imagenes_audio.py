@@ -8,6 +8,7 @@ from io import BytesIO
 import json
 import os
 import hashlib
+import re
 from typing import Optional, Dict, Any
 
 # Configuración de la página
@@ -401,81 +402,87 @@ def generate_character_seed(character_name: str, scene_action: str = "") -> int:
 def create_character_prompt(character: Dict, scene: Dict, style: str = "photorealistic") -> str:
     """
     Crea un prompt optimizado para Flux priorizando DIFERENCIAS entre escenas
+    y GARANTIZANDO el estilo seleccionado
     
-    NUEVA ESTRUCTURA JERÁRQUICA:
-    1. COMPOSICIÓN VISUAL (ángulo de cámara) - Lo más importante
-    2. ACCIÓN/ESCENA específica - Segunda prioridad
-    3. CARACTERÍSTICAS del personaje (compactas) - Tercera prioridad
-    4. EMOCIÓN visible - Cuarta prioridad
-    5. AMBIENTE/ILUMINACIÓN - Quinta prioridad
-    6. ESTILO técnico - Al final
+    ESTRUCTURA JERÁRQUICA:
+    1. COMPOSICIÓN + ACCIÓN + PERSONAJE + EMOCIÓN + AMBIENTE (de Claude)
+    2. ESTILO técnico REFORZADO (override del estilo)
     """
     
-    # 1. COMPOSICIÓN VISUAL - Primer elemento (lo más importante)
-    visual_composition = scene.get("visual_composition", "medium shot")
-    
-    # 2. ACCIÓN/ESCENA - Extraer la acción principal
-    scene_action = scene.get("action", "")
-    
-    # 3. PERSONAJE - Solo características CLAVE (top 3, compactas)
-    key_features = character.get("key_features", [])
-    # Tomar solo las 3 características más distintivas
-    compact_features = ", ".join(key_features[:3]) if key_features else character.get("physical_description", "")
-    
-    # 4. EMOCIÓN - Estado emocional visible
-    emotional_state = scene.get("emotional_state", "")
-    
-    # 5. AMBIENTE/ILUMINACIÓN - Extraer del scene_description o usar metadata
-    lighting_mood = scene.get("lighting_mood", "natural lighting")
-    
-    # 6. SCENE_DESCRIPTION completa (ya viene optimizada de Claude)
+    # Obtener el scene_description optimizado de Claude
     scene_description = scene.get("scene_description", "")
     
-    # ESTRATEGIA: Usar el scene_description de Claude como base (ya está optimizado)
-    # pero asegurarnos de que tenga el formato correcto
+    # CRÍTICO: Limpiar cualquier mención de estilo que Claude haya incluido
+    # para evitar conflictos con el estilo seleccionado por el usuario
+    style_keywords_to_remove = [
+        "anime style", "photorealistic", "digital art", "cinematic",
+        "watercolor", "oil painting", "sketch", "vintage", "minimalist",
+        "Japanese animation art", "manga style", "illustration style",
+        "photography", "painting style", "art style"
+    ]
     
-    # Si scene_description ya existe y está bien formado, usarlo directamente
-    if scene_description and len(scene_description.split(",")) >= 4:
-        # El scene_description de Claude ya tiene el formato optimizado
-        base_prompt = scene_description
+    cleaned_description = scene_description
+    for keyword in style_keywords_to_remove:
+        # Remover case-insensitive
+        import re
+        pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+        cleaned_description = pattern.sub("", cleaned_description)
+    
+    # Limpiar comas múltiples y espacios extra
+    cleaned_description = re.sub(r',\s*,', ',', cleaned_description)  # Comas dobles
+    cleaned_description = re.sub(r'\s+', ' ', cleaned_description)    # Espacios múltiples
+    cleaned_description = cleaned_description.strip().strip(',').strip()
+    
+    # Si después de limpiar quedó un prompt válido, usarlo
+    if cleaned_description and len(cleaned_description.split(",")) >= 3:
+        base_prompt = cleaned_description
     else:
-        # Fallback: construir manualmente si scene_description no está bien formado
+        # Fallback: construir manualmente
+        visual_composition = scene.get("visual_composition", "medium shot")
+        scene_action = scene.get("action", "")
+        key_features = character.get("key_features", [])
+        compact_features = ", ".join(key_features[:3]) if key_features else character.get("physical_description", "")
+        emotional_state = scene.get("emotional_state", "")
+        lighting_mood = scene.get("lighting_mood", "natural lighting")
+        
         base_prompt = f"{visual_composition}, {scene_action}, character: {compact_features}, {emotional_state}, {lighting_mood}"
     
-    # Añadir estilo técnico al final
-    style_suffix = get_style_suffix(style)
+    # REFORZAR el estilo seleccionado al final (esto sobrescribe cualquier residuo)
+    style_suffix = get_style_suffix_strong(style)
     
+    # Construir prompt final con estilo REFORZADO
     final_prompt = f"{base_prompt}, {style_suffix}"
     
     return final_prompt
 
 
-def get_style_suffix(style: str) -> str:
+def get_style_suffix_strong(style: str) -> str:
     """
-    Sufijos de estilo optimizados con énfasis en VARIACIÓN y CALIDAD
+    Sufijos de estilo REFORZADOS para garantizar que Flux respete el estilo
+    Primera keyword en MAYÚSCULAS para máximo énfasis en TODOS los estilos
     """
     style_map = {
-        "photorealistic": "photorealistic photography, varied camera angles, dynamic composition, professional quality, sharp details, high resolution",
+        "photorealistic": "PHOTOREALISTIC PHOTOGRAPHY, professional camera work, natural realistic look, high resolution photography, authentic photo quality, real world imagery",
         
-        "digital-art": "digital art, creative composition, artistic variety, vibrant colors, high quality illustration, professional design, detailed artwork",
+        "digital-art": "DIGITAL ART STYLE, digital illustration, artistic digital painting, modern digital artwork, professional digital design, computer generated art, high quality digital illustration",
         
-        "cinematic": "cinematic composition, film photography, varied camera work, dramatic lighting, depth of field, movie quality, professional cinematography",
+        "cinematic": "CINEMATIC FILM STYLE, movie cinematography, film photography aesthetic, dramatic cinematic look, professional film quality, cinema composition, theatrical lighting",
         
-        "documentary": "documentary photography style, authentic candid shots, natural lighting, varied perspectives, real environment, journalistic quality",
+        "documentary": "DOCUMENTARY PHOTOGRAPHY, photojournalism aesthetic, candid documentary look, authentic documentary imagery, real-life documentation, journalistic photography",
         
-        "portrait": "portrait photography, varied angles and compositions, professional lighting, expressive character focus, high quality",
+        "portrait": "PORTRAIT PHOTOGRAPHY, professional portrait work, studio portrait aesthetic, character portrait photography, portrait composition, expressive portrait art",
         
-        "watercolor": "watercolor painting style, soft flowing colors, varied compositions, traditional painting technique, artistic paper texture, delicate brushwork",
+        "watercolor": "WATERCOLOR PAINTING STYLE, traditional watercolor art, soft watercolor technique, flowing watercolor aesthetic, painted watercolor illustration, artistic watercolor medium",
         
-        "oil-painting": "oil painting style, visible brushstrokes, rich colors, varied classical compositions, old masters technique, artistic texture",
+        "oil-painting": "OIL PAINTING STYLE, classical oil painting technique, traditional oil paint art, oil on canvas aesthetic, painterly oil medium, artistic oil painting strokes",
         
-        "anime": "anime style, dynamic varied compositions, expressive character design, Japanese animation art, vibrant colors, clean lines, manga illustration style, detailed character work",
+        "anime": "ANIME STYLE, Japanese anime art, manga illustration aesthetic, anime character design, vibrant anime colors, clean anime linework, Japanese animation style, expressive anime art",
         
-        "sketch": "artistic pencil sketch, varied drawing angles, expressive lines, soft shading, hand-drawn style, sketch composition variety",
+        "sketch": "PENCIL SKETCH STYLE, hand-drawn sketch aesthetic, artistic sketch drawing, charcoal sketch look, sketch illustration technique, drawn sketch art",
         
-        "vintage": "vintage photography style, nostalgic atmosphere, desaturated colors, aged effect, retro composition, classic photography",
+        "vintage": "VINTAGE PHOTOGRAPHY STYLE, retro aesthetic, nostalgic vintage look, aged vintage effect, classic vintage photography, old-fashioned style",
         
-        "minimalist": "minimalist design, varied simple compositions, clean aesthetic, negative space usage, neutral colors, modern minimal style"
+        "minimalist": "MINIMALIST DESIGN STYLE, clean minimalist aesthetic, simple minimalist composition, modern minimalism, minimal art style, reductive minimalist approach"
     }
     
     return style_map.get(style, style_map["photorealistic"])
