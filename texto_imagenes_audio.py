@@ -140,73 +140,189 @@ def analyze_characters_with_claude(text_content: str, content_type: str, api_key
             "anthropic-version": "2023-06-01"
         }
         
-        system_prompt = """Eres un experto en análisis narrativo y dirección visual cinematográfica. Tu tarea es analizar texto narrativo y extraer información detallada sobre personajes para generar secuencias de imágenes visualmente variadas pero consistentes.
+        system_prompt = """Eres un experto en análisis narrativo, dirección cinematográfica y storyboarding visual. Tu tarea es analizar texto narrativo y extraer información detallada sobre personajes para generar secuencias de imágenes VISUALMENTE MUY DIFERENTES pero con personajes consistentes.
 
-INSTRUCCIONES CLAVE:
-1. Identifica TODOS los personajes principales con características físicas específicas
-2. Analiza el relato MOMENTO A MOMENTO para extraer escenas clave
-3. Para cada escena, genera una descripción visual ÚNICA con diferentes:
-   - Ángulos de cámara (close-up, wide shot, medium shot, etc.)
-   - Emociones y expresiones específicas del momento
-   - Composición visual (primer plano, plano general, etc.)
-   - Iluminación y ambiente según la narrativa
-   - Poses y acciones específicas del personaje
+PRINCIPIO FUNDAMENTAL DE VARIACIÓN VISUAL:
+Cada escena debe ser ÚNICA y RADICALMENTE DISTINTA en composición, ángulo, acción, ambiente y emoción. El objetivo es contar la historia visualmente con MÁXIMA DIVERSIDAD mientras se mantiene la identidad del personaje.
 
-FORMATO DE RESPUESTA (JSON válido):
+ESTRATEGIAS OBLIGATORIAS DE VARIACIÓN POR ESCENA:
+
+1. ÁNGULOS DE CÁMARA - Usar DIFERENTES en cada escena:
+   - Extreme close-up (ECU): Solo rostro/detalle, alta carga emocional
+   - Close-up (CU): Cara y hombros, conexión emocional
+   - Medium close-up (MCU): Cintura hacia arriba, balance emoción-acción
+   - Medium shot (MS): Cuerpo completo de rodillas arriba, acción moderada
+   - Medium long shot (MLS): Cuerpo completo con contexto, acción en ambiente
+   - Long shot (LS): Personaje completo en entorno, énfasis en espacio
+   - Extreme long shot (ELS): Personaje pequeño en paisaje vasto, escala épica
+   - Over-the-shoulder (OTS): Desde detrás del personaje
+   - Low angle: Desde abajo hacia arriba, sensación de poder/heroísmo
+   - High angle: Desde arriba hacia abajo, sensación de vulnerabilidad
+   - Bird's eye view: Vista cenital, perspectiva única
+   - Dutch angle: Cámara inclinada, tensión/desorientación
+
+2. POSES Y ACCIONES - COMPLETAMENTE DIFERENTES:
+   - VARIEDAD OBLIGATORIA: sentado, corriendo, saltando, agachado, escondido, mirando hacia arriba, mirando hacia abajo, caminando, parado en una pata, estirándose, jugando, durmiendo, explorando, trepando
+   - PROHIBIDO: Repetir "sentado mirando al frente" en múltiples escenas
+   - CADA ESCENA: Nueva acción física distintiva del personaje
+
+3. ESTADOS EMOCIONALES - Progresión narrativa clara:
+   - Varía entre: curioso, asustado, valiente, triste, feliz, sorprendido, determinado, pensativo, preocupado, aliviado, emocionado
+   - Expresión facial visible y diferente en cada escena
+   - Las emociones deben reflejar la progresión de la historia
+
+4. AMBIENTES Y CONTEXTOS - CONTRASTANTES:
+   - Alternancia OBLIGATORIA entre espacios:
+     * Interior vs Exterior
+     * Espacios abiertos (bosque, campo) vs cerrados (habitación, cueva)
+     * Diferentes ubicaciones del relato (hogar → bosque → río → cueva, etc.)
+   - Elementos del entorno ESPECÍFICOS y VARIADOS por escena
+   - NUNCA el mismo fondo genérico
+
+5. ILUMINACIÓN Y HORA DEL DÍA - VARIEDAD:
+   - Morning sunlight (luz suave matutina)
+   - Afternoon golden light (luz dorada de tarde)
+   - Sunset dramatic lighting (atardecer dramático)
+   - Night moonlight (luz de luna nocturna)
+   - Filtered forest light (luz filtrada entre árboles)
+   - Dramatic rim lighting (luz de contorno)
+   - Magical glow (resplandor mágico)
+   - Soft indoor lighting (luz interior suave)
+   - Dark mysterious shadows (sombras misteriosas)
+
+6. COMPOSICIÓN VISUAL - Regla de tercios y balance:
+   - Variar posición del personaje: centro, izquierda, derecha, primer plano, fondo
+   - Usar profundidad de campo (foreground/background elements)
+   - Cambiar el peso visual de la escena
+
+FORMATO DE RESPUESTA (JSON válido estricto):
 {
   "has_characters": true/false,
   "characters": [
     {
-      "name": "nombre_descriptivo",
-      "type": "human/animal/creature",
-      "physical_description": "descripción física DETALLADA en inglés (color específico, características únicas, tamaño, etc.)",
-      "key_features": ["característica física específica 1", "característica física específica 2", "característica física específica 3"],
+      "name": "nombre_descriptivo_único",
+      "type": "human/animal/creature/object",
+      "physical_description": "DESCRIPCIÓN FÍSICA BREVE Y ESPECÍFICA en inglés con 2-3 características DISTINTIVAS únicas (color específico, rasgo único memorable, tamaño relativo). Máximo 15 palabras.",
+      "key_features": [
+        "característica física única 1 (ej: bright yellow eyes with vertical pupils)",
+        "característica física única 2 (ej: small black fluffy body)",
+        "característica física única 3 (ej: magical blue glowing collar)"
+      ],
       "suggested_scenes": [
         {
-          "action": "momento específico del relato",
-          "scene_description": "descripción visual COMPLETA en inglés incluyendo: [PERSONAJE con características físicas], [ACCIÓN específica], [EMOCIÓN visible], [COMPOSICIÓN de cámara], [AMBIENTE/ILUMINACIÓN], [ELEMENTOS del entorno]",
-          "visual_composition": "tipo de plano (close-up/medium/wide shot)",
-          "emotional_state": "estado emocional específico del personaje",
-          "lighting_mood": "tipo de iluminación apropiada"
+          "action": "acción/momento específico del relato (ej: discovering the magical collar, running from danger, meeting new friend)",
+          "scene_description": "FORMATO OPTIMIZADO: {CAMERA_ANGLE}, {SPECIFIC_ACTION}, {BRIEF_CHARACTER_TRAITS}, {VISIBLE_EMOTION}, {SPECIFIC_ENVIRONMENT}, {LIGHTING_TYPE}",
+          "visual_composition": "tipo de plano específico (extreme close-up/close-up/medium shot/wide shot/low angle/high angle/bird's eye view/dutch angle)",
+          "emotional_state": "emoción específica visible en rostro/postura (frightened/brave/curious/happy/worried/determined/surprised/relieved)",
+          "lighting_mood": "tipo de iluminación específica y hora (morning sunlight/dramatic sunset/moonlight/filtered forest light/magical glow/rim lighting)"
         }
       ]
     }
   ],
-  "visual_style": "estilo visual sugerido",
-  "consistency_notes": "elementos clave para mantener consistencia visual entre escenas"
+  "visual_style": "estilo visual sugerido global",
+  "consistency_notes": "elementos clave para mantener consistencia visual del personaje entre TODAS las escenas (ej: always show yellow eyes, blue collar, black fur texture)"
 }
 
-EJEMPLOS DE SCENE_DESCRIPTION VARIADAS:
-- "Luna, white hen with bright red comb and small black eyes, looking desperately worried in close-up, searching frantically around empty wooden chicken coop, morning sunlight casting long shadows"
-- "Luna, white hen with bright red comb and small black eyes, in medium shot talking emotionally to pink pig Max near rustic wooden fence, tears visible in eyes, soft golden afternoon light"
-- "Luna, white hen with bright red comb and small black eyes, wide shot walking courageously through dark mysterious forest with pink pig companion, dramatic low-angle view, filtered sunlight through trees"
+EJEMPLOS DE scene_description CORRECTOS (MÁXIMA VARIACIÓN):
 
-IMPORTANTE: Cada scene_description debe ser VISUALMENTE DISTINTA con diferentes composiciones, ángulos y ambientes."""
+Escena 1 - Close-up emocional:
+"Close-up shot, small black cat with yellow eyes looking directly at camera with wide frightened expression, ears flat back, whiskers trembling, dark mysterious forest background blurred, dramatic rim lighting from behind"
+
+Escena 2 - Wide shot de acción:
+"Wide establishing shot, tiny black cat with blue collar running across old wooden bridge, full body visible in motion, determined posture with tail up, sunny countryside landscape with river below, golden afternoon light"
+
+Escena 3 - Low angle heroico:
+"Low angle hero shot, black cat with glowing collar standing on top of large rock looking up at starry sky, one paw raised heroically, brave expression, magical blue light illuminating face from below, epic night scene with stars, cinematic lighting"
+
+Escena 4 - Extreme close-up de detalle:
+"Extreme close-up, black cat's yellow eye reflecting magical blue light, single eye filling frame, wonder and curiosity visible in pupil dilation, soft indoor lighting, warm bokeh background"
+
+Escena 5 - High angle vulnerable:
+"High angle shot, small black cat crouched low hiding behind fern leaves in jungle, looking up nervously, vulnerable posture with body compressed, giant prehistoric plants surrounding, filtered green jungle light"
+
+Escena 6 - Bird's eye view de contexto:
+"Bird's eye view, black cat walking alone on winding forest path, small figure from above, cautious movement, surrounded by tall trees creating natural frame, dappled morning sunlight on path"
+
+ESTRUCTURA ÓPTIMA de scene_description:
+"{ÁNGULO_ESPECÍFICO}, {ACCIÓN_ÚNICA}, {1-2_RASGOS_CLAVE_PERSONAJE}, {EMOCIÓN_VISIBLE}, {AMBIENTE_ESPECÍFICO}, {LUZ_ESPECÍFICA}"
+
+REGLAS CRÍTICAS:
+
+✅ HACER:
+- Usar UN ángulo de cámara diferente por escena
+- Crear UNA acción física única por escena
+- Mostrar UNA emoción distinta y progresiva por escena
+- Cambiar el ambiente/ubicación según la narrativa
+- Variar la iluminación para mood diferente
+- Mantener 2-3 características físicas clave en CADA escena para consistencia
+- Usar máximo 30-40 palabras por scene_description
+- Priorizar DIFERENCIA visual sobre descripción exhaustiva del personaje
+
+❌ NO HACER:
+- Repetir el mismo ángulo (ej: "medium shot" en todas)
+- Usar la misma pose (ej: "sitting looking forward" repetido)
+- Describir TODO el personaje detalladamente en cada prompt
+- Usar descripciones genéricas (ej: "in a forest" sin especificar)
+- Mantener la misma iluminación "natural light" en todas
+- Crear escenas visualmente similares
+- Exceder 40 palabras por scene_description
+- Olvidar las características clave que dan consistencia
+
+OBJETIVO FINAL:
+Generar exactamente el número solicitado de escenas por personaje que:
+1. Cuenten la historia visualmente de forma DINÁMICA
+2. Muestren MÁXIMA VARIEDAD en composición, ángulo, acción, emoción, ambiente
+3. Mantengan CONSISTENCIA del personaje mediante 2-3 rasgos físicos clave siempre presentes
+4. Sean escenas CINEMATOGRÁFICAS dignas de un storyboard profesional
+
+Responde ÚNICAMENTE con el JSON solicitado, sin texto adicional."""
 
         user_message = f"""Analiza el siguiente {content_type} momento a momento y extrae información detallada sobre personajes:
 
 CONTENIDO COMPLETO:
 {text_content}
 
-INSTRUCCIONES ESPECÍFICAS:
-1. Lee todo el relato/cuento completo
-2. Identifica los momentos narrativos clave donde cada personaje tiene una acción/emoción específica
-3. Para cada momento, crea una escena visualmente ÚNICA con descripción completa
-4. Asegúrate de que cada scene_description tenga:
-   - Características físicas específicas del personaje
-   - Acción/pose diferente
-   - Emoción visible apropiada al momento
-   - Composición de cámara variada
-   - Ambiente/iluminación acorde a la narrativa
+NÚMERO DE ESCENAS A GENERAR: {max_scenes} escenas por personaje
 
-OBJETIVO: Generar exactamente {max_scenes} escenas por personaje que cuenten la historia visualmente con MÁXIMA VARIEDAD pero manteniendo la consistencia del personaje.
+INSTRUCCIONES ESPECÍFICAS DE ANÁLISIS:
+1. Lee el relato/cuento COMPLETO de principio a fin
+2. Identifica los momentos narrativos MÁS IMPORTANTES donde cada personaje:
+   - Tiene una acción significativa
+   - Experimenta una emoción fuerte
+   - Interactúa con otros personajes o el ambiente
+   - Avanza la historia de manera relevante
 
-Responde ÚNICAMENTE con el JSON solicitado."""
+3. Para cada escena seleccionada, crea una descripción siguiendo ESTRICTAMENTE este formato:
+   "{{ÁNGULO_DE_CÁMARA_ESPECÍFICO}}, {{ACCIÓN_FÍSICA_ÚNICA}}, {{2-3_RASGOS_FÍSICOS_CLAVE}}, {{EMOCIÓN_VISIBLE_EN_ROSTRO}}, {{AMBIENTE_ESPECÍFICO_CON_DETALLES}}, {{TIPO_DE_ILUMINACIÓN}}"
+
+4. ASEGÚRATE de que cada scene_description incluya:
+   ✅ UN ángulo de cámara diferente (close-up, wide shot, low angle, bird's eye, etc.)
+   ✅ UNA acción/pose completamente diferente (NO repetir "sentado" o "mirando")
+   ✅ Solo 2-3 características físicas clave del personaje (NO toda la descripción)
+   ✅ UNA emoción específica apropiada al momento narrativo
+   ✅ UN ambiente/ubicación específico diferente (interior/exterior, día/noche, etc.)
+   ✅ UN tipo de iluminación variado según el mood de la escena
+
+5. DISTRIBUCIÓN DE ESCENAS SUGERIDA para {max_scenes} escenas:
+   - Escena inicial: Establecer personaje (medium/wide shot, estado neutral/curioso)
+   - Escenas intermedias: Conflicto/desarrollo (close-ups emocionales, action shots)
+   - Escena final: Resolución/clímax (low angle heroico o wide shot épico)
+
+6. VERIFICACIÓN FINAL antes de responder:
+   - ¿Cada escena tiene un ángulo de cámara DIFERENTE? ✓
+   - ¿Cada escena muestra una acción/pose ÚNICA? ✓
+   - ¿Las escenas cuentan la progresión de la historia? ✓
+   - ¿La iluminación y ambiente varían según la narrativa? ✓
+   - ¿Se mantienen 2-3 rasgos clave del personaje en TODAS las escenas? ✓
+
+OBJETIVO: Crear {max_scenes} escenas VISUALMENTE DISTINTAS que narren la historia del personaje de forma cinematográfica, manteniendo su identidad visual mediante características físicas consistentes.
+
+Responde ÚNICAMENTE con el JSON válido solicitado, sin comentarios adicionales."""
 
         data = {
             "model": model,
-            "max_tokens": 3000,  # Aumentado para análisis más detallado
-            "temperature": 0.4,  # Ligeramente más creativo
+            "max_tokens": 3000,
+            "temperature": 0.4,
             "system": system_prompt,
             "messages": [
                 {"role": "user", "content": user_message}
