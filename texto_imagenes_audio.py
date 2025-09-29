@@ -401,43 +401,37 @@ def generate_character_seed(character_name: str, scene_action: str = "") -> int:
 
 def create_character_prompt(character: Dict, scene: Dict, style: str = "photorealistic") -> str:
     """
-    Crea un prompt optimizado para Flux priorizando DIFERENCIAS entre escenas
-    y GARANTIZANDO el estilo seleccionado
+    Crea un prompt optimizado con ESTILO AL PRINCIPIO para máxima efectividad
     
-    ESTRUCTURA JERÁRQUICA:
-    1. COMPOSICIÓN + ACCIÓN + PERSONAJE + EMOCIÓN + AMBIENTE (de Claude)
-    2. ESTILO técnico REFORZADO (override del estilo)
+    NUEVA ESTRUCTURA:
+    1. ESTILO (primera posición - máxima prioridad)
+    2. Composición + Acción + Personaje + Emoción + Ambiente
     """
-    
     # Obtener el scene_description optimizado de Claude
     scene_description = scene.get("scene_description", "")
     
-    # CRÍTICO: Limpiar cualquier mención de estilo que Claude haya incluido
-    # para evitar conflictos con el estilo seleccionado por el usuario
+    # Limpiar cualquier mención de estilo del scene_description
     style_keywords_to_remove = [
         "anime style", "photorealistic", "digital art", "cinematic",
         "watercolor", "oil painting", "sketch", "vintage", "minimalist",
         "Japanese animation art", "manga style", "illustration style",
-        "photography", "painting style", "art style"
+        "photography", "painting style", "art style", "realistic"
     ]
     
     cleaned_description = scene_description
     for keyword in style_keywords_to_remove:
-        # Remover case-insensitive
-        import re
         pattern = re.compile(re.escape(keyword), re.IGNORECASE)
         cleaned_description = pattern.sub("", cleaned_description)
     
-    # Limpiar comas múltiples y espacios extra
-    cleaned_description = re.sub(r',\s*,', ',', cleaned_description)  # Comas dobles
-    cleaned_description = re.sub(r'\s+', ' ', cleaned_description)    # Espacios múltiples
+    # Limpiar formato
+    cleaned_description = re.sub(r',\s*,', ',', cleaned_description)
+    cleaned_description = re.sub(r'\s+', ' ', cleaned_description)
     cleaned_description = cleaned_description.strip().strip(',').strip()
     
-    # Si después de limpiar quedó un prompt válido, usarlo
+    # Si quedó un prompt válido, usarlo; sino crear manualmente
     if cleaned_description and len(cleaned_description.split(",")) >= 3:
-        base_prompt = cleaned_description
+        content_prompt = cleaned_description
     else:
-        # Fallback: construir manualmente
         visual_composition = scene.get("visual_composition", "medium shot")
         scene_action = scene.get("action", "")
         key_features = character.get("key_features", [])
@@ -445,44 +439,43 @@ def create_character_prompt(character: Dict, scene: Dict, style: str = "photorea
         emotional_state = scene.get("emotional_state", "")
         lighting_mood = scene.get("lighting_mood", "natural lighting")
         
-        base_prompt = f"{visual_composition}, {scene_action}, character: {compact_features}, {emotional_state}, {lighting_mood}"
+        content_prompt = f"{visual_composition}, {scene_action}, character: {compact_features}, {emotional_state}, {lighting_mood}"
     
-    # REFORZAR el estilo seleccionado al final (esto sobrescribe cualquier residuo)
-    style_suffix = get_style_suffix_strong(style)
+    # Obtener el prefijo de estilo (va PRIMERO)
+    style_prefix = get_style_prefix(style)
     
-    # Construir prompt final con estilo REFORZADO
-    final_prompt = f"{base_prompt}, {style_suffix}"
+    # NUEVO FORMATO: ESTILO PRIMERO, luego contenido
+    final_prompt = f"{style_prefix}, {content_prompt}"
     
     return final_prompt
 
-
-def get_style_suffix_strong(style: str) -> str:
+def get_style_prefix(style: str) -> str:
     """
-    Sufijos de estilo REFORZADOS para garantizar que Flux respete el estilo
-    Primera keyword en MAYÚSCULAS para máximo énfasis en TODOS los estilos
+    Prefijos de estilo COMPLETOS que van AL INICIO del prompt
+    Balance entre especificidad y longitud para máxima efectividad
     """
     style_map = {
-        "photorealistic": "PHOTOREALISTIC PHOTOGRAPHY, professional camera work, natural realistic look, high resolution photography, authentic photo quality, real world imagery",
+        "photorealistic": "Photorealistic photograph, professional camera work, natural realistic look, high quality photography",
         
-        "digital-art": "DIGITAL ART STYLE, digital illustration, artistic digital painting, modern digital artwork, professional digital design, computer generated art, high quality digital illustration",
+        "digital-art": "Digital art illustration, artistic digital painting, professional digital design, high quality digital artwork",
         
-        "cinematic": "CINEMATIC FILM STYLE, movie cinematography, film photography aesthetic, dramatic cinematic look, professional film quality, cinema composition, theatrical lighting",
+        "cinematic": "Cinematic film scene, movie cinematography, dramatic cinematic composition, film photography aesthetic",
         
-        "documentary": "DOCUMENTARY PHOTOGRAPHY, photojournalism aesthetic, candid documentary look, authentic documentary imagery, real-life documentation, journalistic photography",
+        "documentary": "Documentary photography, authentic photojournalism style, candid documentary look, natural lighting",
         
-        "portrait": "PORTRAIT PHOTOGRAPHY, professional portrait work, studio portrait aesthetic, character portrait photography, portrait composition, expressive portrait art",
+        "portrait": "Portrait photography, professional portrait work, studio lighting, expressive character portrait",
         
-        "watercolor": "WATERCOLOR PAINTING STYLE, traditional watercolor art, soft watercolor technique, flowing watercolor aesthetic, painted watercolor illustration, artistic watercolor medium",
+        "watercolor": "Watercolor painting, traditional watercolor art technique, soft flowing colors, artistic watercolor medium",
         
-        "oil-painting": "OIL PAINTING STYLE, classical oil painting technique, traditional oil paint art, oil on canvas aesthetic, painterly oil medium, artistic oil painting strokes",
+        "oil-painting": "Oil painting on canvas, classical oil painting technique, rich colors, visible brushstrokes",
         
-        "anime": "ANIME STYLE, Japanese anime art, manga illustration aesthetic, anime character design, vibrant anime colors, clean anime linework, Japanese animation style, expressive anime art",
+        "anime": "Anime art, Japanese animation style, vibrant anime colors, clean linework, manga illustration aesthetic, expressive anime character design",
         
-        "sketch": "PENCIL SKETCH STYLE, hand-drawn sketch aesthetic, artistic sketch drawing, charcoal sketch look, sketch illustration technique, drawn sketch art",
+        "sketch": "Pencil sketch drawing, hand-drawn artistic sketch, expressive lines, charcoal sketch aesthetic",
         
-        "vintage": "VINTAGE PHOTOGRAPHY STYLE, retro aesthetic, nostalgic vintage look, aged vintage effect, classic vintage photography, old-fashioned style",
+        "vintage": "Vintage photograph, retro photography style, nostalgic vintage aesthetic, aged vintage effect",
         
-        "minimalist": "MINIMALIST DESIGN STYLE, clean minimalist aesthetic, simple minimalist composition, modern minimalism, minimal art style, reductive minimalist approach"
+        "minimalist": "Minimalist design, clean minimalist aesthetic, simple composition, modern minimalist style"
     }
     
     return style_map.get(style, style_map["photorealistic"])
