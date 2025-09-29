@@ -368,69 +368,99 @@ Responde ÚNICAMENTE con el JSON válido solicitado, sin comentarios adicionales
         st.error(f"Error analizando personajes: {str(e)}")
         return {"has_characters": False, "characters": []}
 
-def generate_character_seed(character_name: str, scene_action: str = "") -> int:
+def generate_character_seed(character_name: str, scene_action: str = "", scene_index: int = 0, style: str = "photorealistic") -> int:
     """
-    Genera un seed consistente basado en el personaje con variación controlada por escena
+    Genera seeds con MAYOR variación para diferentes escenas del mismo personaje
+    y OFFSET por estilo para empujar hacia espacios latentes específicos
     
     Args:
         character_name: Nombre del personaje (para consistencia base)
         scene_action: Acción específica de la escena (para variación)
+        scene_index: Índice de la escena (para variación adicional)
+        style: Estilo visual seleccionado (afecta el offset del seed)
     
     Returns:
-        Seed que mantiene consistencia del personaje pero permite variación visual
+        Seed que mantiene consistencia del personaje pero con variación por escena y estilo
     """
     import hashlib
     
-    # Seed base del personaje (siempre igual para el mismo personaje)
+    # Seed base del personaje (consistencia - 50% del peso)
     base_hash = hashlib.md5(character_name.encode()).hexdigest()
-    base_seed = int(base_hash[:6], 16) % 50000
+    base_seed = int(base_hash[:8], 16) % 100000
     
-    # Variación sutil por escena (si se proporciona)
+    # Variación por acción de escena (40% del peso)
     if scene_action and scene_action.strip():
         scene_hash = hashlib.md5(scene_action.encode()).hexdigest()
-        scene_variation = int(scene_hash[:3], 16) % 1000
-        
-        # Combinar: mantener consistencia del personaje + añadir variación de escena
-        final_seed = base_seed + scene_variation
+        scene_variation = int(scene_hash[:6], 16) % 10000  # Variación 10x mayor que antes
     else:
-        # Si no hay acción específica, usar solo el seed base del personaje
-        final_seed = base_seed
+        scene_variation = 0
     
-    # Asegurar que el seed esté en rango válido
-    return final_seed % 100000
+    # Variación por índice de escena (10% del peso)
+    index_variation = scene_index * 1000
+    
+    # NUEVO: Offset por estilo para empujar hacia espacios latentes específicos
+    # Estilos ilustrados/no-realistas necesitan offset para evitar zona hiperrealista
+    style_offset = get_style_seed_offset(style)
+    
+    # Combinar con pesos balanceados
+    final_seed = (base_seed + scene_variation + index_variation + style_offset) % 1000000
+    
+    return final_seed
+
+
+def get_style_seed_offset(style: str) -> int:
+    """
+    Calcula offset de seed según el estilo visual
+    
+    Los estilos no-realistas necesitan offset para empujar la generación
+    hacia áreas del espacio latente que producen imágenes más ilustradas/artísticas
+    en lugar del realismo 3D/fotográfico que Flux favorece por defecto
+    
+    Args:
+        style: Estilo visual seleccionado
+    
+    Returns:
+        Valor de offset a sumar al seed (0 para estilos realistas)
+    """
+    style_offsets = {
+        "photorealistic": 0,           # Sin offset - zona realista natural
+        "digital-art": 100000,         # Offset significativo hacia ilustración
+        "cinematic": 0,                # Realista/fotográfico
+        "documentary": 0,              # Realista/fotográfico
+        "portrait": 0,                 # Realista/fotográfico
+        "watercolor": 150000,          # Offset hacia painted/acuarela
+        "oil-painting": 200000,        # Offset fuerte hacia painted/óleo
+        "anime": 250000,               # Offset máximo hacia 2D/anime
+        "sketch": 180000,              # Offset hacia drawn/dibujado
+        "vintage": 50000,              # Offset leve - semi-realista
+        "minimalist": 120000           # Offset moderado hacia ilustración simple
+    }
+    
+    return style_offsets.get(style, 0)
 
 def create_character_prompt(character: Dict, scene: Dict, style: str = "photorealistic") -> str:
     """
-    Crea un prompt con BLINDAJE DE ESTILO en múltiples capas
+    Crea un prompt optimizado con estilo INTEGRADO en todo el prompt
     
-    ESTRATEGIA ANTI-REALISMO:
-    1. Prefijo de estilo FUERTE
-    2. Contenido limpio de términos realistas
-    3. Inyección de estilo en medio
-    4. Sufijo de estilo reforzado
-    5. Términos negativos anti-realismo
+    ESTRATEGIA:
+    1. ESTILO al principio (establecer)
+    2. Contenido visual
+    3. ESTILO al final (reforzar)
     """
-    # Obtener scene_description de Claude
+    # Obtener el scene_description optimizado de Claude
     scene_description = scene.get("scene_description", "")
     
-    # Lista AMPLIADA de términos que causan realismo
-    realistic_keywords_to_remove = [
-        # Términos de estilo
-        "photorealistic", "realistic", "photograph", "photo",
-        "cinematic", "film", "movie", "camera",
-        
-        # Términos técnicos fotográficos que causan 3D/CGI
-        "rendered", "render", "3d", "cgi",
-        "depth of field", "bokeh", "dof",
-        "professional photography", "studio lighting",
-        
-        # Términos de estilos conflictivos
-        "anime style", "watercolor", "oil painting", "sketch",
-        "illustration style", "art style", "painting style"
+    # Limpiar cualquier mención de estilo del scene_description
+    style_keywords_to_remove = [
+        "anime style", "photorealistic", "digital art", "cinematic",
+        "watercolor", "oil painting", "sketch", "vintage", "minimalist",
+        "Japanese animation art", "manga style", "illustration style",
+        "photography", "painting style", "art style", "realistic",
+        "photograph", "photo"
     ]
     
     cleaned_description = scene_description
-    for keyword in realistic_keywords_to_remove:
+    for keyword in style_keywords_to_remove:
         pattern = re.compile(re.escape(keyword), re.IGNORECASE)
         cleaned_description = pattern.sub("", cleaned_description)
     
@@ -439,7 +469,7 @@ def create_character_prompt(character: Dict, scene: Dict, style: str = "photorea
     cleaned_description = re.sub(r'\s+', ' ', cleaned_description)
     cleaned_description = cleaned_description.strip().strip(',').strip()
     
-    # Construir prompt base
+    # Si quedó un prompt válido, usarlo; sino crear manualmente
     if cleaned_description and len(cleaned_description.split(",")) >= 3:
         content_prompt = cleaned_description
     else:
@@ -452,110 +482,78 @@ def create_character_prompt(character: Dict, scene: Dict, style: str = "photorea
         
         content_prompt = f"{visual_composition}, {scene_action}, character: {compact_features}, {emotional_state}, {lighting_mood}"
     
-    # NUEVA ESTRUCTURA CON 4 CAPAS DE PROTECCIÓN:
-    style_prefix = get_style_prefix_strong(style)      # Capa 1: Inicio fuerte
-    style_middle = get_style_middle_injection(style)   # Capa 2: Inyección media
-    style_suffix = get_style_suffix_strong(style)      # Capa 3: Final reforzado
-    style_negative = get_style_negative_terms(style)   # Capa 4: Anti-términos
+    # Obtener prefijo y sufijo de estilo
+    style_prefix = get_style_prefix(style)
+    style_suffix = get_style_suffix(style)
     
-    # CONSTRUCCIÓN FINAL CON BLINDAJE MÚLTIPLE
-    final_prompt = f"{style_prefix}, {content_prompt}, {style_middle}, {style_suffix}, {style_negative}"
+    # ESTRUCTURA: ESTILO + CONTENIDO + ESTILO
+    # Esto crea un "sandwich" que mantiene el estilo constante
+    final_prompt = f"{style_prefix}, {content_prompt}, {style_suffix}"
     
     return final_prompt
 
 
-def get_style_prefix_strong(style: str) -> str:
-    """Prefijo MUY FUERTE con términos repetidos para estilos no-realistas"""
+def get_style_prefix(style: str) -> str:
+    """
+    Prefijos de estilo que van AL INICIO del prompt
+    """
     style_map = {
-        "photorealistic": "Photorealistic photograph",
+        "photorealistic": "Photorealistic photograph, professional camera work",
         
-        "digital-art": "Digital illustration art, 2D digital painting, hand-painted digital artwork",
+        "digital-art": "Digital art illustration, artistic digital painting",
         
-        "cinematic": "Cinematic film scene",
+        "cinematic": "Cinematic film scene, movie cinematography",
         
-        "documentary": "Documentary photography",
+        "documentary": "Documentary photography, photojournalism style",
         
-        "portrait": "Portrait photograph",
+        "portrait": "Portrait photography, professional portrait",
         
-        "watercolor": "Traditional watercolor painting, watercolor illustration",
+        "watercolor": "Watercolor painting, traditional watercolor art",
         
-        "oil-painting": "Oil painting on canvas, classical painted art",
+        "oil-painting": "Oil painting on canvas, classical oil technique",
         
-        "anime": "Anime illustration art, 2D Japanese animation drawing",
+        "anime": "Anime art, Japanese animation style",
         
-        "sketch": "Hand-drawn pencil sketch, sketch illustration",
+        "sketch": "Pencil sketch drawing, hand-drawn sketch",
         
-        "vintage": "Vintage photograph",
+        "vintage": "Vintage photograph, retro photography",
         
-        "minimalist": "Minimalist design illustration"
+        "minimalist": "Minimalist design, clean aesthetic"
     }
     
     return style_map.get(style, style_map["photorealistic"])
 
 
-def get_style_middle_injection(style: str) -> str:
-    """Inyección de estilo en medio del prompt para mantener consistencia"""
-    style_map = {
-        "photorealistic": "photographic style",
-        "digital-art": "illustrated digital art style, painted look",
-        "cinematic": "cinematic look",
-        "documentary": "documentary style",
-        "portrait": "portrait style",
-        "watercolor": "watercolor painted style",
-        "oil-painting": "oil painted style",
-        "anime": "anime art style, drawn illustration",
-        "sketch": "sketch art style",
-        "vintage": "vintage style",
-        "minimalist": "minimalist style"
-    }
-    
-    return style_map.get(style, "artistic style")
-
-
-def get_style_suffix_strong(style: str) -> str:
-    """Sufijo REFORZADO anti-realismo para estilos ilustrados"""
-    style_map = {
-        "photorealistic": "professional photography quality",
-        
-        "digital-art": "digital art aesthetic, illustrated not photographic, painterly digital style, 2D artwork",
-        
-        "cinematic": "film quality",
-        
-        "documentary": "documentary aesthetic",
-        
-        "portrait": "portrait quality",
-        
-        "watercolor": "watercolor art medium, painted watercolor aesthetic",
-        
-        "oil-painting": "oil paint aesthetic, painted canvas style",
-        
-        "anime": "anime aesthetic, 2D animation art, drawn not rendered",
-        
-        "sketch": "sketch aesthetic, drawn artwork",
-        
-        "vintage": "vintage aesthetic",
-        
-        "minimalist": "minimalist aesthetic"
-    }
-    
-    return style_map.get(style, "artistic quality")
-
-
-def get_style_negative_terms(style: str) -> str:
+def get_style_suffix(style: str) -> str:
     """
-    Términos NEGATIVOS para estilos no-realistas
-    Esto le dice a Flux explícitamente qué NO hacer
+    Sufijos de estilo que van AL FINAL del prompt para reforzar
+    Más cortos que antes pero específicos
     """
-    # Solo para estilos que sufren de drift hacia realismo
-    negative_styles = {
-        "digital-art": "not 3D render, not CGI, not photorealistic, illustrated artwork",
-        "watercolor": "not photograph, not realistic, painted art",
-        "oil-painting": "not photograph, not realistic, painted canvas",
-        "anime": "not 3D render, not CGI, not realistic, 2D drawn art",
-        "sketch": "not photograph, hand-drawn art"
+    style_map = {
+        "photorealistic": "realistic photo quality, authentic imagery",
+        
+        "digital-art": "digital artwork style, illustrated aesthetic",
+        
+        "cinematic": "cinematic look, film quality",
+        
+        "documentary": "documentary style, candid photography",
+        
+        "portrait": "portrait composition, expressive character work",
+        
+        "watercolor": "watercolor medium, painted illustration",
+        
+        "oil-painting": "oil paint texture, painterly style",
+        
+        "anime": "anime aesthetic, manga art style",
+        
+        "sketch": "sketch style, drawn illustration",
+        
+        "vintage": "vintage aesthetic, retro style",
+        
+        "minimalist": "minimalist style, simple design"
     }
     
-    return negative_styles.get(style, "")
+    return style_map.get(style, style_map["photorealistic"])
 # Función para generar texto con Claude Sonnet 4
 def generate_text_claude(prompt: str, content_type: str, api_key: str, model: str, max_tokens: int) -> Optional[str]:
     """Genera contenido de texto usando Claude Sonnet 4 de Anthropic"""
@@ -965,8 +963,41 @@ def optimize_prompt_for_flux(prompt, style="photorealistic"):
         return prompt
 
 # Función para generar imagen con Flux Pro (basada en el archivo de referencia)
-def generate_image_flux_pro(prompt, width, height, steps, api_key, seed=None):
-    """Genera imagen usando Flux Pro 1.1"""
+def generate_image_flux_pro(prompt, width, height, steps, api_key, seed=None, style="photorealistic"):
+    """
+    Genera imagen usando Flux Pro 1.1 con guidance ajustado según el estilo
+    
+    Args:
+        prompt: Prompt de texto para la imagen
+        width: Ancho de la imagen
+        height: Alto de la imagen
+        steps: Número de pasos de generación
+        api_key: API key de Black Forest Labs
+        seed: Seed para reproducibilidad (opcional)
+        style: Estilo visual que afecta el valor de guidance
+    
+    Returns:
+        Imagen PIL o mensaje de error
+    """
+    
+    # Guidance más bajo = más libertad creativa, menos apegado al prompt
+    # Guidance más alto = más estricto con el prompt, fuerza el estilo
+    guidance_by_style = {
+        "photorealistic": 2.5,    # Default de Flux
+        "digital-art": 3.5,       # Más guidance para forzar estilo ilustrado
+        "cinematic": 2.5,         # Default - realista
+        "documentary": 2.5,       # Default - realista
+        "portrait": 2.5,          # Default - realista
+        "watercolor": 4.0,        # Alto para forzar estilo painted
+        "oil-painting": 4.0,      # Alto para forzar estilo painted
+        "anime": 4.5,             # Muy alto para forzar 2D anime
+        "sketch": 3.5,            # Alto para forzar estilo dibujado
+        "vintage": 2.5,           # Default - semi-realista
+        "minimalist": 3.0         # Moderado para estilo simple
+    }
+    
+    guidance_value = guidance_by_style.get(style, 2.5)
+    
     headers = {
         'accept': 'application/json',
         'x-key': api_key,
@@ -979,8 +1010,8 @@ def generate_image_flux_pro(prompt, width, height, steps, api_key, seed=None):
         'height': int(height),
         'steps': int(steps),
         'prompt_upsampling': False,
-        'seed': seed if seed is not None else 42,  # Usar seed proporcionado o default
-        'guidance': 2.5,
+        'seed': seed if seed is not None else 42,
+        'guidance': guidance_value,  # Ajustado según el estilo
         'safety_tolerance': 2,
         'interval': 2,
         'output_format': 'jpeg'
@@ -1132,7 +1163,7 @@ def generate_image_flux(text_content: str, content_type: str, api_key: str, mode
             result = generate_image_flux_ultra(final_prompt, aspect_ratio, api_key, character_seed)
         else:
             # Usar Pro normal
-            result = generate_image_flux_pro(final_prompt, width, height, steps, api_key, character_seed)
+            result = generate_image_flux_pro(final_prompt, width, height, steps, api_key, character_seed, style)
         
         if isinstance(result, Image.Image):
             return result, final_prompt
@@ -1192,21 +1223,31 @@ def generate_character_sequence(text_content: str, content_type: str, character_
             
             st.write(f"🎬 Escena {j+1}: {scene['action']}")
             
-            # Generar seed específico para esta escena
-            character_seed = generate_character_seed(character["name"])
-            
+            # Generar seed específico para esta escena CON offset de estilo
+            character_seed = generate_character_seed(
+                character["name"],
+                scene["action"],
+                j,  # scene_index
+                flux_config["style"]  # Pasar el estilo para aplicar offset
+            )
+
             # Crear prompt específico para esta escena
             scene_prompt = create_character_prompt(character, scene, flux_config["style"])
-            
+
             # Mostrar el prompt que se va a usar
-            with st.expander(f"📝 Prompt para {scene['action']} (Seed: {character_seed})"):
+            with st.expander(f"🔍 Prompt para {scene['action']} (Seed: {character_seed})"):
                 st.code(scene_prompt, language="text")
-            
-            # Generar imagen con seed específico de la escena
+
+            # Generar imagen con seed y guidance ajustados por estilo
             try:
                 if flux_config["model"] == "flux-pro-1.1-ultra":
                     aspect_ratio = f"{flux_config['width']}:{flux_config['height']}" if flux_config['width'] == flux_config['height'] else "16:9"
-                    image_result = generate_image_flux_ultra(scene_prompt, aspect_ratio, flux_config["api_key"], character_seed)
+                    image_result = generate_image_flux_ultra(
+                    scene_prompt, 
+                    aspect_ratio, 
+                    flux_config["api_key"], 
+                    character_seed
+                )
                 else:
                     image_result = generate_image_flux_pro(
                         scene_prompt, 
@@ -1214,8 +1255,9 @@ def generate_character_sequence(text_content: str, content_type: str, character_
                         flux_config["height"], 
                         flux_config["steps"], 
                         flux_config["api_key"], 
-                        character_seed
-                    )
+                        character_seed,
+                        flux_config["style"]  # Pasar estilo para guidance ajustado
+                )
                 
                 if isinstance(image_result, Image.Image):
                     # Guardar imagen en session state
