@@ -401,11 +401,12 @@ def generate_character_seed(character_name: str, scene_action: str = "") -> int:
 
 def create_character_prompt(character: Dict, scene: Dict, style: str = "photorealistic") -> str:
     """
-    Crea un prompt optimizado con ESTILO AL PRINCIPIO para máxima efectividad
+    Crea un prompt optimizado con estilo INTEGRADO en todo el prompt
     
-    NUEVA ESTRUCTURA:
-    1. ESTILO (primera posición - máxima prioridad)
-    2. Composición + Acción + Personaje + Emoción + Ambiente
+    ESTRATEGIA:
+    1. ESTILO al principio (establecer)
+    2. Contenido visual
+    3. ESTILO al final (reforzar)
     """
     # Obtener el scene_description optimizado de Claude
     scene_description = scene.get("scene_description", "")
@@ -415,7 +416,8 @@ def create_character_prompt(character: Dict, scene: Dict, style: str = "photorea
         "anime style", "photorealistic", "digital art", "cinematic",
         "watercolor", "oil painting", "sketch", "vintage", "minimalist",
         "Japanese animation art", "manga style", "illustration style",
-        "photography", "painting style", "art style", "realistic"
+        "photography", "painting style", "art style", "realistic",
+        "photograph", "photo"
     ]
     
     cleaned_description = scene_description
@@ -441,41 +443,75 @@ def create_character_prompt(character: Dict, scene: Dict, style: str = "photorea
         
         content_prompt = f"{visual_composition}, {scene_action}, character: {compact_features}, {emotional_state}, {lighting_mood}"
     
-    # Obtener el prefijo de estilo (va PRIMERO)
+    # Obtener prefijo y sufijo de estilo
     style_prefix = get_style_prefix(style)
+    style_suffix = get_style_suffix(style)
     
-    # NUEVO FORMATO: ESTILO PRIMERO, luego contenido
-    final_prompt = f"{style_prefix}, {content_prompt}"
+    # ESTRUCTURA: ESTILO + CONTENIDO + ESTILO
+    # Esto crea un "sandwich" que mantiene el estilo constante
+    final_prompt = f"{style_prefix}, {content_prompt}, {style_suffix}"
     
     return final_prompt
 
+
 def get_style_prefix(style: str) -> str:
     """
-    Prefijos de estilo COMPLETOS que van AL INICIO del prompt
-    Balance entre especificidad y longitud para máxima efectividad
+    Prefijos de estilo que van AL INICIO del prompt
     """
     style_map = {
-        "photorealistic": "Photorealistic photograph, professional camera work, natural realistic look, high quality photography",
+        "photorealistic": "Photorealistic photograph, professional camera work",
         
-        "digital-art": "Digital art illustration, artistic digital painting, professional digital design, high quality digital artwork",
+        "digital-art": "Digital art illustration, artistic digital painting",
         
-        "cinematic": "Cinematic film scene, movie cinematography, dramatic cinematic composition, film photography aesthetic",
+        "cinematic": "Cinematic film scene, movie cinematography",
         
-        "documentary": "Documentary photography, authentic photojournalism style, candid documentary look, natural lighting",
+        "documentary": "Documentary photography, photojournalism style",
         
-        "portrait": "Portrait photography, professional portrait work, studio lighting, expressive character portrait",
+        "portrait": "Portrait photography, professional portrait",
         
-        "watercolor": "Watercolor painting, traditional watercolor art technique, soft flowing colors, artistic watercolor medium",
+        "watercolor": "Watercolor painting, traditional watercolor art",
         
-        "oil-painting": "Oil painting on canvas, classical oil painting technique, rich colors, visible brushstrokes",
+        "oil-painting": "Oil painting on canvas, classical oil technique",
         
-        "anime": "Anime art, Japanese animation style, vibrant anime colors, clean linework, manga illustration aesthetic, expressive anime character design",
+        "anime": "Anime art, Japanese animation style",
         
-        "sketch": "Pencil sketch drawing, hand-drawn artistic sketch, expressive lines, charcoal sketch aesthetic",
+        "sketch": "Pencil sketch drawing, hand-drawn sketch",
         
-        "vintage": "Vintage photograph, retro photography style, nostalgic vintage aesthetic, aged vintage effect",
+        "vintage": "Vintage photograph, retro photography",
         
-        "minimalist": "Minimalist design, clean minimalist aesthetic, simple composition, modern minimalist style"
+        "minimalist": "Minimalist design, clean aesthetic"
+    }
+    
+    return style_map.get(style, style_map["photorealistic"])
+
+
+def get_style_suffix(style: str) -> str:
+    """
+    Sufijos de estilo que van AL FINAL del prompt para reforzar
+    Más cortos que antes pero específicos
+    """
+    style_map = {
+        "photorealistic": "realistic photo quality, authentic imagery",
+        
+        "digital-art": "digital artwork style, illustrated aesthetic",
+        
+        "cinematic": "cinematic look, film quality",
+        
+        "documentary": "documentary style, candid photography",
+        
+        "portrait": "portrait composition, expressive character work",
+        
+        "watercolor": "watercolor medium, painted illustration",
+        
+        "oil-painting": "oil paint texture, painterly style",
+        
+        "anime": "anime aesthetic, manga art style",
+        
+        "sketch": "sketch style, drawn illustration",
+        
+        "vintage": "vintage aesthetic, retro style",
+        
+        "minimalist": "minimalist style, simple design"
     }
     
     return style_map.get(style, style_map["photorealistic"])
