@@ -401,27 +401,36 @@ def generate_character_seed(character_name: str, scene_action: str = "") -> int:
 
 def create_character_prompt(character: Dict, scene: Dict, style: str = "photorealistic") -> str:
     """
-    Crea un prompt optimizado con estilo INTEGRADO en todo el prompt
+    Crea un prompt con BLINDAJE DE ESTILO en múltiples capas
     
-    ESTRATEGIA:
-    1. ESTILO al principio (establecer)
-    2. Contenido visual
-    3. ESTILO al final (reforzar)
+    ESTRATEGIA ANTI-REALISMO:
+    1. Prefijo de estilo FUERTE
+    2. Contenido limpio de términos realistas
+    3. Inyección de estilo en medio
+    4. Sufijo de estilo reforzado
+    5. Términos negativos anti-realismo
     """
-    # Obtener el scene_description optimizado de Claude
+    # Obtener scene_description de Claude
     scene_description = scene.get("scene_description", "")
     
-    # Limpiar cualquier mención de estilo del scene_description
-    style_keywords_to_remove = [
-        "anime style", "photorealistic", "digital art", "cinematic",
-        "watercolor", "oil painting", "sketch", "vintage", "minimalist",
-        "Japanese animation art", "manga style", "illustration style",
-        "photography", "painting style", "art style", "realistic",
-        "photograph", "photo"
+    # Lista AMPLIADA de términos que causan realismo
+    realistic_keywords_to_remove = [
+        # Términos de estilo
+        "photorealistic", "realistic", "photograph", "photo",
+        "cinematic", "film", "movie", "camera",
+        
+        # Términos técnicos fotográficos que causan 3D/CGI
+        "rendered", "render", "3d", "cgi",
+        "depth of field", "bokeh", "dof",
+        "professional photography", "studio lighting",
+        
+        # Términos de estilos conflictivos
+        "anime style", "watercolor", "oil painting", "sketch",
+        "illustration style", "art style", "painting style"
     ]
     
     cleaned_description = scene_description
-    for keyword in style_keywords_to_remove:
+    for keyword in realistic_keywords_to_remove:
         pattern = re.compile(re.escape(keyword), re.IGNORECASE)
         cleaned_description = pattern.sub("", cleaned_description)
     
@@ -430,7 +439,7 @@ def create_character_prompt(character: Dict, scene: Dict, style: str = "photorea
     cleaned_description = re.sub(r'\s+', ' ', cleaned_description)
     cleaned_description = cleaned_description.strip().strip(',').strip()
     
-    # Si quedó un prompt válido, usarlo; sino crear manualmente
+    # Construir prompt base
     if cleaned_description and len(cleaned_description.split(",")) >= 3:
         content_prompt = cleaned_description
     else:
@@ -443,78 +452,110 @@ def create_character_prompt(character: Dict, scene: Dict, style: str = "photorea
         
         content_prompt = f"{visual_composition}, {scene_action}, character: {compact_features}, {emotional_state}, {lighting_mood}"
     
-    # Obtener prefijo y sufijo de estilo
-    style_prefix = get_style_prefix(style)
-    style_suffix = get_style_suffix(style)
+    # NUEVA ESTRUCTURA CON 4 CAPAS DE PROTECCIÓN:
+    style_prefix = get_style_prefix_strong(style)      # Capa 1: Inicio fuerte
+    style_middle = get_style_middle_injection(style)   # Capa 2: Inyección media
+    style_suffix = get_style_suffix_strong(style)      # Capa 3: Final reforzado
+    style_negative = get_style_negative_terms(style)   # Capa 4: Anti-términos
     
-    # ESTRUCTURA: ESTILO + CONTENIDO + ESTILO
-    # Esto crea un "sandwich" que mantiene el estilo constante
-    final_prompt = f"{style_prefix}, {content_prompt}, {style_suffix}"
+    # CONSTRUCCIÓN FINAL CON BLINDAJE MÚLTIPLE
+    final_prompt = f"{style_prefix}, {content_prompt}, {style_middle}, {style_suffix}, {style_negative}"
     
     return final_prompt
 
 
-def get_style_prefix(style: str) -> str:
-    """
-    Prefijos de estilo que van AL INICIO del prompt
-    """
+def get_style_prefix_strong(style: str) -> str:
+    """Prefijo MUY FUERTE con términos repetidos para estilos no-realistas"""
     style_map = {
-        "photorealistic": "Photorealistic photograph, professional camera work",
+        "photorealistic": "Photorealistic photograph",
         
-        "digital-art": "Digital art illustration, artistic digital painting",
+        "digital-art": "Digital illustration art, 2D digital painting, hand-painted digital artwork",
         
-        "cinematic": "Cinematic film scene, movie cinematography",
+        "cinematic": "Cinematic film scene",
         
-        "documentary": "Documentary photography, photojournalism style",
+        "documentary": "Documentary photography",
         
-        "portrait": "Portrait photography, professional portrait",
+        "portrait": "Portrait photograph",
         
-        "watercolor": "Watercolor painting, traditional watercolor art",
+        "watercolor": "Traditional watercolor painting, watercolor illustration",
         
-        "oil-painting": "Oil painting on canvas, classical oil technique",
+        "oil-painting": "Oil painting on canvas, classical painted art",
         
-        "anime": "Anime art, Japanese animation style",
+        "anime": "Anime illustration art, 2D Japanese animation drawing",
         
-        "sketch": "Pencil sketch drawing, hand-drawn sketch",
+        "sketch": "Hand-drawn pencil sketch, sketch illustration",
         
-        "vintage": "Vintage photograph, retro photography",
+        "vintage": "Vintage photograph",
         
-        "minimalist": "Minimalist design, clean aesthetic"
+        "minimalist": "Minimalist design illustration"
     }
     
     return style_map.get(style, style_map["photorealistic"])
 
 
-def get_style_suffix(style: str) -> str:
-    """
-    Sufijos de estilo que van AL FINAL del prompt para reforzar
-    Más cortos que antes pero específicos
-    """
+def get_style_middle_injection(style: str) -> str:
+    """Inyección de estilo en medio del prompt para mantener consistencia"""
     style_map = {
-        "photorealistic": "realistic photo quality, authentic imagery",
-        
-        "digital-art": "digital artwork style, illustrated aesthetic",
-        
-        "cinematic": "cinematic look, film quality",
-        
-        "documentary": "documentary style, candid photography",
-        
-        "portrait": "portrait composition, expressive character work",
-        
-        "watercolor": "watercolor medium, painted illustration",
-        
-        "oil-painting": "oil paint texture, painterly style",
-        
-        "anime": "anime aesthetic, manga art style",
-        
-        "sketch": "sketch style, drawn illustration",
-        
-        "vintage": "vintage aesthetic, retro style",
-        
-        "minimalist": "minimalist style, simple design"
+        "photorealistic": "photographic style",
+        "digital-art": "illustrated digital art style, painted look",
+        "cinematic": "cinematic look",
+        "documentary": "documentary style",
+        "portrait": "portrait style",
+        "watercolor": "watercolor painted style",
+        "oil-painting": "oil painted style",
+        "anime": "anime art style, drawn illustration",
+        "sketch": "sketch art style",
+        "vintage": "vintage style",
+        "minimalist": "minimalist style"
     }
     
-    return style_map.get(style, style_map["photorealistic"])
+    return style_map.get(style, "artistic style")
+
+
+def get_style_suffix_strong(style: str) -> str:
+    """Sufijo REFORZADO anti-realismo para estilos ilustrados"""
+    style_map = {
+        "photorealistic": "professional photography quality",
+        
+        "digital-art": "digital art aesthetic, illustrated not photographic, painterly digital style, 2D artwork",
+        
+        "cinematic": "film quality",
+        
+        "documentary": "documentary aesthetic",
+        
+        "portrait": "portrait quality",
+        
+        "watercolor": "watercolor art medium, painted watercolor aesthetic",
+        
+        "oil-painting": "oil paint aesthetic, painted canvas style",
+        
+        "anime": "anime aesthetic, 2D animation art, drawn not rendered",
+        
+        "sketch": "sketch aesthetic, drawn artwork",
+        
+        "vintage": "vintage aesthetic",
+        
+        "minimalist": "minimalist aesthetic"
+    }
+    
+    return style_map.get(style, "artistic quality")
+
+
+def get_style_negative_terms(style: str) -> str:
+    """
+    Términos NEGATIVOS para estilos no-realistas
+    Esto le dice a Flux explícitamente qué NO hacer
+    """
+    # Solo para estilos que sufren de drift hacia realismo
+    negative_styles = {
+        "digital-art": "not 3D render, not CGI, not photorealistic, illustrated artwork",
+        "watercolor": "not photograph, not realistic, painted art",
+        "oil-painting": "not photograph, not realistic, painted canvas",
+        "anime": "not 3D render, not CGI, not realistic, 2D drawn art",
+        "sketch": "not photograph, hand-drawn art"
+    }
+    
+    return negative_styles.get(style, "")
 # Función para generar texto con Claude Sonnet 4
 def generate_text_claude(prompt: str, content_type: str, api_key: str, model: str, max_tokens: int) -> Optional[str]:
     """Genera contenido de texto usando Claude Sonnet 4 de Anthropic"""
